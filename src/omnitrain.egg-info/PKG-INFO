@@ -1,0 +1,8 @@
+Metadata-Version: 2.4
+Name: omnitrain
+Version: 1.0.0
+Summary: Industrial Multimodal AI Framework
+Requires-Dist: numpy
+Requires-Dist: torch
+Requires-Dist: rich
+Requires-Dist: pyyaml

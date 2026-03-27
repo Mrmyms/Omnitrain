@@ -1,0 +1,2 @@
+[console_scripts]
+omni = omnitrain.cli:main

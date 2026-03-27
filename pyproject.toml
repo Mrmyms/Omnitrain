@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=42", "wheel", "pybind11>=2.6"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omnitrain"
+version = "1.0.0"
+description = "Industrial Multimodal AI Framework"
+dependencies = [
+    "numpy",
+    "torch",
+    "rich",
+    "pyyaml"
+]
+
+[project.scripts]
+omni = "omnitrain.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
