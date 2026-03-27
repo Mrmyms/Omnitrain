@@ -467,9 +467,3 @@ Copyright (c) 2026 OmniTrain Contributors.
 5. Push to the branch (`git push origin feature/amazing-feature`)
 6. Open a Pull Request
 
----
-
-<p align="center">
-  Built with 🧠 by the OmniTrain Team<br>
-  <em>"Fuse Everything. Trust Nothing. Verify Formally."</em>
-</p>
