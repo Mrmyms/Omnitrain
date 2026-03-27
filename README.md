@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/python-3.9%2B-blue" alt="Python">
   <img src="https://img.shields.io/badge/pytorch-2.0%2B-orange" alt="PyTorch">
   <img src="https://img.shields.io/badge/transport-C%2B%2B%20SharedMemory-green" alt="Transport">
-  <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="License">
+  <img src="https://img.shields.io/badge/license-Apache%202.0-lightgrey" alt="License">
 </p>
 
 ---
@@ -452,7 +452,7 @@ This means even if the AI is wrong, the robot will still behave safely.
 
 ## 📄 License
 
-MIT License — Built for industrial excellence.
+Apache License 2.0 — Built for industrial excellence.
 
 Copyright (c) 2026 OmniTrain Contributors.
 
