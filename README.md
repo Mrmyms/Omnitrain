@@ -1,67 +1,70 @@
+# OmniTrain 4.0: Liquid Intelligence
+### Industrial Liquid Neural Networks & Formal Safety for Robotics
 
+---
 
-# OmniTrain
-
-### Multimodal AI Framework for Robotics, Edge AI & Sensor Fusion
-
-[![Version](https://img.shields.io/badge/version-3.0--supreme-blueviolet)](https://github.com/mrmyms/OmniTrain)
-[![Python](https://img.shields.io/badge/python-3.9%2B-blue)](https://python.org)
-[![PyTorch](https://img.shields.io/badge/pytorch-2.0%2B-orange)](https://pytorch.org)
-[![License](https://img.shields.io/badge/license-Apache%202.0-lightgrey)](LICENSE)
-
-**OmniTrain** is a high-performance framework designed to fuse heterogeneous sensor streams (Lidar, Camera, IMU, etc.) into unified AI reasoning in real-time. Built for robotics and mission-critical edge deployments.
+OmniTrain is a state-of-the-art framework for building **Liquid Neural Networks (CfC)** and **Input Convex Neural Networks (ICNN)** for industrial robotics. It focuses on sub-millisecond latency, time-continuous reasoning, and provable safety.
 
 ---
 
 ## Quick Start
 
-### 1. Install
+### 1. Installation
 ```bash
-pip install -e .
+git clone https://github.com/Mrmyms/Omnitrain.git
+cd omnitrain
+pip install -r requirements.txt
 ```
 
-### 2. Initialize
+### 2. Launch the Console
 ```bash
-omni init
+# Using the 1omni alias (recommended)
+1omni
+
+# Or manually
+PYTHONPATH=src python3 -m omnitrain.cli
 ```
 
-### 3. Train
-```bash
-omni run config.yaml
+### 3. Universal Ingestion
+```python
+from omnitrain.omni_stream import OmniStream
+
+stream = OmniStream(core, shield)
+result = stream.send({"lidar": 1.5, "camera": "frame.jpg"})
+action = result['action'] # Safe action via OmniShield
 ```
 
 ---
 
-## Why OmniTrain?
+## Core Pillars
 
-*   **Multimodal Fusion**: Seamlessly combine any sensor data into a unified latent space using Cross-Attention Transformers.
-*   **Real-Time Performance**: Runs at 1000Hz+ via a native C++ SharedMemory transport layer (TokenBus).
-*   **Formal Safety**: Hard mathematical constraints that override neural outputs to guarantee safe operations in any environment.
-*   **Edge Ready**: Native support for NVIDIA DLA, TensorRT, and CUDA with automated pruning and quantization.
+*   **Liquid Brain (CfC)**: Closed-form Continuous-time networks for extreme OOD robustness and temporal stability.
+*   **OmniShield (ICNN)**: Formal safety verification using Input Convex Neural Networks to guarantee safe operational boundaries.
+*   **OmniStream**: Universal sensor ingestion that auto-detects and transforms any data type (Vision, Vector, Scalar).
+*   **TokenBus C++**: High-speed Shared Memory transport for sub-millisecond inter-process communication.
 
 ---
 
-## High-Level Architecture
+## Architecture
 
 ```mermaid
-graph LR
-    Sensors[Sensors] --> TB[TokenBus C++]
-    TB --> FC[FusionCore AI]
-    FC --> SG[ SafetyGuard]
-    SG --> Action[Safe Action]
+graph TD
+    A[Universal Sensors] -->|OmniStream| B(LiquidFusionCore)
+    B -->|Latents| C{OmniShield v2}
+    C -->|Safe| D[Motor Command]
+    C -->|Danger| E[Emergency Stop / Projection]
+    style C fill:#f96,stroke:#333,stroke-width:2px
 ```
 
 ---
 
-## Documentation & Resources
+## Resources
 
-*   **[Technical Deep Dive](DETAILS.md)**: Detailed architecture, code examples, and CLI reference.
-*   **[Core Concepts](DETAILS.md#core-concepts)**: FusionCore, Auto-Modality, and Stateful Memory.
-*   **[Deployment Guide](DETAILS.md#edge-deployment-c-engine)**: Pruning, Quantization, and C++ Engine.
+*   **[Technical Deep Dive](docs/DETAILS.md)**: CfC cells and ICNN barriers.
+*   **[Training Pipeline](docs/TRAINING_PIPELINE.md)**: 3-phase curriculum (Imitation, Safety, Chaos).
+*   **[CLI Reference](docs/DETAILS.md#cli-reference)**: Management console usage.
 
 ---
 
-<p align="center">
-  Built by the OmniTrain Team (MRMYMS)<br>
-  <em>"ONE brain, ALL you can process"</em>
-</p>
+**OmniTrain Team**
+"Fuse Everything. Trust Nothing. Verify Formally."

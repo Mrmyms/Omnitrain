@@ -1,0 +1,37 @@
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+*.so
+
+# OmniTrain Model Bundles (large binary files)
+*.omni
+*.onnx
+
+# TensorRT / DLA Cache
+trt_cache/
+dla_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs and temp
+*.log
+/tmp/
+
+# Jupyter
+.ipynb_checkpoints/
