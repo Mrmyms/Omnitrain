@@ -25,7 +25,7 @@ graph TD
     SG -->|Safe| ACT[Action Output]
     SG -->|Violation| EMR[Emergency Override]
     
-    subgraph "OmniTrain 3.0 Supreme Stack"
+    subgraph "OmniTrain"
         TB
         AIP
         FC
