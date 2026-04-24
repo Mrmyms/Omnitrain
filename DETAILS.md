@@ -37,7 +37,7 @@ graph TD
 
 ---
 
-## Key Features (Detailed)
+## Key Features
 
 | Feature | Description | Module |
 |:--|:--|:--|
