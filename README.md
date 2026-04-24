@@ -55,9 +55,9 @@ graph LR
 
 ## Documentation & Resources
 
-*   **[Technical Deep Dive](docs/DETAILS.md)**: Detailed architecture, code examples, and CLI reference.
-*   **[Core Concepts](docs/DETAILS.md#core-concepts)**: FusionCore, Auto-Modality, and Stateful Memory.
-*   **[Deployment Guide](docs/DETAILS.md#edge-deployment-c-engine)**: Pruning, Quantization, and C++ Engine.
+*   **[Technical Deep Dive](DETAILS.md)**: Detailed architecture, code examples, and CLI reference.
+*   **[Core Concepts](DETAILS.md#core-concepts)**: FusionCore, Auto-Modality, and Stateful Memory.
+*   **[Deployment Guide](DETAILS.md#edge-deployment-c-engine)**: Pruning, Quantization, and C++ Engine.
 
 ---
 
