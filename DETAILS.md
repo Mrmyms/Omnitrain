@@ -1,10 +1,10 @@
-# OmniTrain — Technical Deep Dive 🔬
+# OmniTrain — Technical Deep Dive 
 
 This document contains the detailed technical specifications, architectural insights, and advanced usage guides for the OmniTrain framework.
 
 ---
 
-## 🏗 Full Architecture
+## Full Architecture
 
 OmniTrain uses a modular, transport-agnostic architecture designed for high-frequency sensor fusion.
 
