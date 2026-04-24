@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="assets/banner.png" alt="OmniTrain Banner" width="100%">
-</p>
+
 
 # OmniTrain
 
