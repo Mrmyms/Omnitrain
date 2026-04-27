@@ -31,6 +31,7 @@ dla_cache/
 
 # Logs and temp
 *.log
+*.csv
 /tmp/
 
 # Jupyter

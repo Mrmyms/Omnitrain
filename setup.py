@@ -16,7 +16,7 @@ setup(
     install_requires=["numpy", "torch", "rich", "pyyaml"],
     entry_points={
         'console_scripts': [
-            'omni=cli:main',
+            'omni=omnitrain.cli:main',
         ],
     },
     cmdclass={"build_ext": build_ext},

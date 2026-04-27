@@ -1,0 +1,43 @@
+# SafeDelivery-Bot Configuration
+project: "SafeDelivery_Robot"
+version: "1.0"
+
+# AI "Brain" Architecture
+model:
+  d_model: 256        # Latent space depth
+  n_latents: 32       # Memory slots
+  num_layers: 2       # Reasoning depth
+  n_heads: 4          # Visual/Spatial focus heads
+
+# Multimodal Inputs
+inputs:
+  - id: "lidar_front"
+    type: "sensor"
+    hz: 10
+    dim: 32            # 32-beam 1D lidar
+  - id: "vision_embed"
+    type: "vision"
+    hz: 5
+    dim: 128           # Pre-compressed ResNet embeddings
+  - id: "battery_state"
+    type: "boolean"
+    hz: 1
+    dim: 1
+
+# Industrial Task Heads
+heads:
+  - id: "drive_control"
+    type: "regression"
+    output_dim: 2      # [Linear Velocity, Angular Velocity]
+  - id: "safety"
+    type: "classification"
+    num_classes: 2     # [SAFE, EMERGENCY]
+
+# Formal Safety Constraints
+safety_constraints:
+  - sensor: "lidar_front"
+    min: 0.15          # Emergency stop if obstacle < 15cm
+    max: 10.0
+  - sensor: "battery_state"
+    min: 0.0
+    max: 0.5           # Emergency if battery flag is active (1.0)

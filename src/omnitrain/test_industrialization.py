@@ -149,8 +149,8 @@ def test_safety_guard():
         safe_out = guard(dummy_latents, sensor_readings={'lidar': 5.0})
         danger_out = guard(dummy_latents, sensor_readings={'lidar': 0.01})
 
-    test("Safe forward: normal output", danger_out[:, 1].item() == float('inf'))
-    test("Danger forward: emergency forced", safe_out[:, 1].item() != float('inf'))
+    test("Safe forward: normal output", safe_out[:, 1].item() < 100)
+    test("Danger forward: emergency forced", danger_out[:, 1].item() >= 1e6)
 
     # Test report generation
     report = guard.generate_safety_report([
@@ -166,7 +166,7 @@ def test_language_unification():
     print("\n--- Test 6: Language Unification ---")
     spanish_patterns = [
         'Iniciando', 'Cargando', 'completada', 'Estrategia',
-        'Cuantización', 'Codificación', 'Orquestador',
+        'Cuantización', 'Codificación', 'Orquestador', 'Arquitectura',
     ]
     src_dir = os.path.join(os.path.dirname(__file__))
     py_files = glob.glob(os.path.join(src_dir, '*.py'))

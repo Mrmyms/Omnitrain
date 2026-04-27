@@ -3,12 +3,30 @@ import torch.nn as nn
 from typing import Optional, Dict
 
 
+class CNNProjector(nn.Module):
+    """
+    High-Fidelity Vision: Processes raw RGB/Depth images from Isaac Sim.
+    Reduces (Batch, C, H, W) -> (Batch, N_tokens, d_model)
+    """
+    def __init__(self, d_model=512):
+        super().__init__()
+        self.conv = nn.Sequential(
+            nn.Conv2d(3, 32, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d((8, 8)) # Fixed 64 tokens
+        )
+        self.proj = nn.Linear(64, d_model)
+
+    def forward(self, x):
+        # x: (Batch, 3, H, W)
+        x = self.conv(x) # (B, 64, 8, 8)
+        x = x.flatten(2).transpose(1, 2) # (B, 64, 64)
+        return self.proj(x)
+
+
 class AdaptiveInputProjector(nn.Module):
-    """
-    Auto-Modality: Dynamically creates and caches per-modality input projections.
-    When a new sensor shape is encountered, a new Linear projector is automatically
-    registered, eliminating the need to pre-configure input_dim.
-    """
 
     def __init__(self, d_model: int, default_input_dim: int = 512):
         super().__init__()
@@ -33,6 +51,22 @@ class AdaptiveInputProjector(nn.Module):
             self.modality_projectors[key] = proj
 
         return self.modality_projectors[key]
+
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
+        """Hook to auto-create modality projectors when loading a state dict."""
+        for key in list(state_dict.keys()):
+            if key.startswith(prefix + "modality_projectors."):
+                # Format: modality_projectors.modal_id_dim.weight
+                parts = key.replace(prefix + "modality_projectors.", "").split(".")
+                if len(parts) >= 2:
+                    full_id = parts[0] # modal_id_dim
+                    if full_id not in self.modality_projectors:
+                        # Infer input_dim from weight shape
+                        if "weight" in parts[1]:
+                            input_dim = state_dict[key].shape[1]
+                            self.modality_projectors[full_id] = nn.Linear(input_dim, self.d_model)
+        
+        super()._load_from_state_dict(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)
 
     def forward(self, sensor_data: torch.Tensor, modal_id: str = "default") -> torch.Tensor:
         """
@@ -117,8 +151,9 @@ class FusionCore(nn.Module):
         # Continuous Temporal Positional Encoding
         self.time_encoding = nn.Linear(1, d_model)
 
-        # Auto-Modality: Adaptive input projection bank
-        self.input_projector = AdaptiveInputProjector(d_model, default_input_dim=input_dim)
+        # Auto-Modality: Input Projectors
+        self.input_projector = AdaptiveInputProjector(d_model=d_model, default_input_dim=input_dim)
+        self.cnn_projector = CNNProjector(d_model=d_model)
 
         # Cross-Attention: Sensor tokens -> Latents
         self.cross_attn = nn.MultiheadAttention(d_model, n_heads, batch_first=True)
@@ -140,31 +175,21 @@ class FusionCore(nn.Module):
                 prev_latents: Optional[torch.Tensor] = None,
                 modal_id: str = "default"):
         """
-        Tensor-first forward pass with auto-modality and stateful memory.
-
-        Args:
-            sensor_data:  (Batch, N, input_dim) — pre-stacked sensor tensor.
-            timestamps:   (Batch, N, 1)         — normalized timestamps.
-            prev_latents: (Batch, n_latents, d_model) — optional previous state
-                          for temporal continuity. Pass None for stateless mode.
-            modal_id:     Modality identifier for auto-projection selection.
-
-        Returns:
-            Fused latent representation: (Batch, n_latents, d_model).
-            Can be fed back as prev_latents for the next step.
+        Multimodal Forward Pass: Fuses sensor data with latent state.
+        Supports both raw image data (CNN) and vectorized sensor data (Auto-Modality).
         """
+
         batch_size = sensor_data.size(0)
-
-        if sensor_data.size(1) == 0:
-            return torch.zeros(batch_size, self.n_latents, self.d_model,
-                               device=self.latents.device)
-
-        # 1. Temporal Encoding
-        temporal_encodings = self.time_encoding(timestamps)  # (B, N, d_model)
-
-        # 2. Auto-Modality: Project raw sensor data using adaptive projector
-        tokens = self.input_projector(sensor_data, modal_id)  # (B, N, d_model)
-
+        
+        # 1. Temporal Encoding (Continuous)
+        temporal_encodings = self.time_encoding(timestamps)
+        
+        # 2. Vision vs Sensor projection
+        if len(sensor_data.shape) == 4: # Is Image (B, C, H, W)
+            tokens = self.cnn_projector(sensor_data)
+        else:
+            tokens = self.input_projector(sensor_data, modal_id)
+            
         # 3. Fuse temporal information
         tokens_aware = tokens + temporal_encodings
 
@@ -180,3 +205,123 @@ class FusionCore(nn.Module):
 
         # 7. Temporal reasoning over fused latents
         return self.transformer(latents_with_memory)
+
+
+class CfCCell(nn.Module):
+    """
+    Closed-form Continuous-time (CfC) Cell.
+    A Liquid Neural Network building block that solves the underlying ODE 
+    in closed form for incredible speed and stability.
+    """
+    def __init__(self, input_size: int, hidden_size: int):
+        super().__init__()
+        self.hidden_size = hidden_size
+        
+        # Neural components for drive (f) and projection (g)
+        self.W_in = nn.Linear(input_size, hidden_size)
+        self.W_rec = nn.Linear(hidden_size, hidden_size)
+        
+        # Time-scale parameters (Liquid aspect)
+        self.tau = nn.Parameter(torch.randn(1, hidden_size))
+        self.A = nn.Parameter(torch.ones(1, hidden_size))
+
+        self.activation = nn.Tanh()
+        
+    def forward(self, x: torch.Tensor, h_prev: torch.Tensor, dt: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: (Batch, input_size) current input.
+            h_prev: (Batch, hidden_size) previous liquid state.
+            dt: (Batch, 1) time elapsed since last step.
+        """
+        # Drive: how the input and previous state want to push the system
+        drive = self.activation(self.W_in(x) + self.W_rec(h_prev))
+        
+        # Time-decaying gating: The "Liquid" magic.
+        # The flow of time directly alters the gating mechanism.
+        time_gate = torch.sigmoid(-dt * (self.A + drive) / torch.exp(self.tau))
+        
+        # Closed-form ODE update: smooth interpolation between memory and new drive
+        h_next = h_prev * time_gate + drive * (1 - time_gate)
+        
+        return h_next
+
+
+class LiquidFusionCore(nn.Module):
+    """
+    OmniTrain Liquid Core v4.0 (MIT CfC Architecture).
+    Replaces the discrete Transformer backbone with a Continuous-Time Liquid network.
+    Massively reduces parameter count while improving Out-Of-Distribution robustness.
+    """
+    def __init__(self, n_latents=32, d_model=256, input_dim=512):
+        super().__init__()
+        self.n_latents = n_latents
+        self.d_model = d_model
+        self.input_dim = input_dim
+
+        # Auto-Modality Projectors (Same as v3.0)
+        self.input_projector = AdaptiveInputProjector(d_model=d_model, default_input_dim=input_dim)
+        self.cnn_projector = CNNProjector(d_model=d_model)
+
+        # Cross-Attention to compress spatial/sensor tokens into fixed latents
+        self.latents = nn.Parameter(torch.randn(1, n_latents, d_model))
+        self.cross_attn = nn.MultiheadAttention(d_model, 4, batch_first=True)
+        self.cross_attn_norm = nn.LayerNorm(d_model)
+
+        # Spatial Self-Attention: Allows latents to share context before liquid evolution
+        self.self_attn = nn.MultiheadAttention(d_model, 4, batch_first=True)
+        self.self_attn_norm = nn.LayerNorm(d_model)
+
+        # The Liquid Backbone (replaces Transformer and RecurrentLatentMemory)
+        self.liquid_cell = CfCCell(d_model, d_model)
+
+        # Legacy compatibility
+        self.token_proj = self.input_projector.default_proj
+
+    def forward(self, sensor_data: torch.Tensor, dt: torch.Tensor,
+                prev_latents: Optional[torch.Tensor] = None,
+                modal_id: str = "default"):
+        """
+        Args:
+            sensor_data: (Batch, N_tokens, input_dim)
+            dt: (Batch, 1) time elapsed since last inference in seconds.
+            prev_latents: (Batch, n_latents, d_model) previous liquid state.
+        """
+        batch_size = sensor_data.size(0)
+        device = sensor_data.device
+        
+        # 1. Vision vs Sensor projection
+        if len(sensor_data.shape) == 4:
+            tokens = self.cnn_projector(sensor_data)
+        else:
+            tokens = self.input_projector(sensor_data, modal_id)
+            
+        # 2. Expand latent queries
+        latents = self.latents.expand(batch_size, -1, -1)
+
+        # 3. Cross-Attention: Compress N variable tokens -> fixed latents
+        attn_out, _ = self.cross_attn(query=latents, key=tokens, value=tokens)
+        latents_fused = self.cross_attn_norm(latents + attn_out)
+
+        # 3.5 Spatial Synergy: Latents communicate context before ODE evolution
+        self_out, _ = self.self_attn(query=latents_fused, key=latents_fused, value=latents_fused)
+        latents_spatial = self.self_attn_norm(latents_fused + self_out)
+
+        # 4. Liquid State Evolution
+        if prev_latents is None:
+            prev_latents = torch.zeros_like(latents_spatial)
+
+        # Apply CfC across all latents
+        B, N, D = latents_spatial.shape
+        x_flat = latents_spatial.reshape(B * N, D)
+        h_flat = prev_latents.reshape(B * N, D)
+        
+        # Ensure dt is shaped correctly for the flattened batch (B*N, 1)
+        if dt.dim() == 1:
+            dt = dt.unsqueeze(-1)
+        dt_flat = dt.view(B, 1).expand(B, N).reshape(B * N, 1)
+        
+        # Evolve the system
+        h_next_flat = self.liquid_cell(x_flat, h_flat, dt_flat)
+        
+        return h_next_flat.reshape(B, N, D)

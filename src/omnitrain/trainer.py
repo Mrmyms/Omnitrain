@@ -22,6 +22,12 @@ class OmniTrainer:
         self.criterion = criterion
         # Stateful Latents: persistent memory across training steps
         self._prev_latents: Optional[torch.Tensor] = None
+        self._last_step_time: Optional[float] = None
+        
+        # AMP: Automatic Mixed Precision for CUDA Tensor Cores
+        # Only active when CUDA is available; graceful fallback on CPU/Mac
+        self._use_amp = torch.cuda.is_available()
+        self.scaler = torch.cuda.amp.GradScaler(enabled=self._use_amp)
 
         # FSDP: Wrap model for distributed training if requested
         if use_fsdp:
@@ -97,8 +103,9 @@ class OmniTrainer:
         return sensor_data, timestamps
 
     def reset_memory(self):
-        """Reset the stateful latent memory (e.g., at start of a new episode)."""
+        """Reset the stateful latent memory and timer."""
         self._prev_latents = None
+        self._last_step_time = None
 
     def train_step_from_bus(self, task_id: str, window_size: float = 0.5,
                             stateful: bool = True) -> float:
@@ -132,30 +139,47 @@ class OmniTrainer:
         if sensor_data is None:
             return 0.0
 
+        # Kernel-level time tracking for accurate Liquid ODE evolution
+        now_perf = time.perf_counter()
+        if self._last_step_time is None:
+            dt_val = 0.05  # Default 50ms startup
+        else:
+            dt_val = now_perf - self._last_step_time
+        self._last_step_time = now_perf
+
+        device = sensor_data.device
+        dt_tensor = torch.tensor([dt_val], dtype=torch.float32, device=device)
+
         self.model.train()
         self.heads.train()
 
-        # Forward with stateful memory
+        # Forward with stateful memory (AMP-enabled)
         prev = self._prev_latents if stateful else None
-        latents = self.model(sensor_data, timestamps, prev_latents=prev)
+        
+        with torch.amp.autocast(device_type='cuda', enabled=self._use_amp):
+            # Pass precise dt_tensor instead of discrete timestamps
+            latents = self.model(sensor_data, dt_tensor, prev_latents=prev)
+            
+            # Update memory for next step (detach to prevent BPTT explosion)
+            if stateful:
+                self._prev_latents = latents.detach()
+    
+            prediction = self.heads[task_id](latents)
+    
+            # Ensure prediction/target alignment
+            if prediction.dim() == 3:  # (B, S, C)
+                prediction = prediction.view(-1, prediction.size(-1))
+                target = target.expand(prediction.size(0))
+    
+            # Sync device
+            target = target.to(prediction.device)
+            loss = self.criterion(prediction, target)
 
-        # Update memory for next step (detach to prevent BPTT explosion)
-        if stateful:
-            self._prev_latents = latents.detach()
-
-        prediction = self.heads[task_id](latents)
-
-        # Ensure prediction/target alignment (handle sequence dimension if present)
-        if prediction.dim() == 3:  # (B, S, C)
-            prediction = prediction.view(-1, prediction.size(-1))
-            target = target.expand(prediction.size(0))
-
-        # Sync device
-        target = target.to(prediction.device)
-
-        loss = self.criterion(prediction, target)
         self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
+        
+        # Backward and Step with Scaler
+        self.scaler.scale(loss).backward()
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
 
         return loss.item()

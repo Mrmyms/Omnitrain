@@ -18,12 +18,13 @@ class OmniExporter:
         architecture = {
             'd_model': model.d_model,
             'n_latents': model.n_latents,
-            'n_heads': model.n_heads,
-            'num_layers': model.num_layers,
+            'n_heads': getattr(model, 'n_heads', None),
+            'num_layers': getattr(model, 'num_layers', None),
             'input_dim': model.input_dim,
-            # v3.0 feature flags
+            # v3.0/v4.0 feature flags
             'has_auto_modality': hasattr(model, 'input_projector'),
             'has_stateful_memory': hasattr(model, 'memory'),
+            'is_liquid_core': hasattr(model, 'liquid_cell'),
             'heads': {}
         }
 
@@ -60,8 +61,7 @@ class OmniExporter:
         if not os.path.exists(omni_path):
             raise FileNotFoundError(f"Export bundle {omni_path} not found.")
 
-        # Lazy imports to avoid circular dependencies
-        from .fusion_core import FusionCore
+        from .fusion_core import FusionCore, LiquidFusionCore
         from .heads import ClassificationHead, RegressionHead
 
         bundle = torch.load(omni_path)
@@ -70,13 +70,20 @@ class OmniExporter:
 
         # 1. Reconstruct Backbone (metadata-driven or fallback)
         if arch:
-            core = FusionCore(
-                d_model=arch['d_model'],
-                n_latents=arch['n_latents'],
-                n_heads=arch.get('n_heads', 8),
-                num_layers=arch.get('num_layers', 3),
-                input_dim=arch.get('input_dim', 512)
-            )
+            if arch.get('is_liquid_core', False):
+                core = LiquidFusionCore(
+                    d_model=arch['d_model'],
+                    n_latents=arch['n_latents'],
+                    input_dim=arch.get('input_dim', 512)
+                )
+            else:
+                core = FusionCore(
+                    d_model=arch['d_model'],
+                    n_latents=arch['n_latents'],
+                    n_heads=arch.get('n_heads', 8),
+                    num_layers=arch.get('num_layers', 3),
+                    input_dim=arch.get('input_dim', 512)
+                )
         else:
             # Legacy fallback for v1.0 bundles
             d_model = meta.get('d_model', 512)

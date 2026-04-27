@@ -9,15 +9,15 @@ from .token_bus import TokenBus
 def generate_dashboard(bus: TokenBus) -> Layout:
     layout = Layout()
     layout.split_column(Layout(name="head", size=3), Layout(name="body"), Layout(name="foot", size=3))
-    layout["head"].update(Panel("OmniTrain Engine Status", style="bold cyan"))
+    layout["head"].update(Panel("OmniTrain Engine Status", style="color(117)"))
 
     now = time.time()
     tokens = bus.get_window(now - 1.0, now)
     
-    table = Table(title="Live Modalities")
-    table.add_column("MODAL_ID")
+    table = Table(title="Live Modalities", box=None, border_style="color(117)")
+    table.add_column("ID")
     table.add_column("HZ", justify="right")
-    table.add_column("LATENCY (ms)", justify="right")
+    table.add_column("LATENCY", justify="right")
 
     stats = {}
     for t in tokens:
@@ -34,7 +34,7 @@ def generate_dashboard(bus: TokenBus) -> Layout:
         table.add_row(mid, f"{data['cnt']} Hz", f"{avg_lat:.2f}")
 
     layout["body"].update(table)
-    layout["foot"].update(Panel(f"Shared Memory Capacity: {bus.buffer_size()} active slots"))
+    layout["foot"].update(Panel(f"Capacity: {bus.buffer_size()} slots", style="color(117)"))
     return layout
 
 def run_monitor(bus: TokenBus):

@@ -6,6 +6,9 @@ import sys
 import os
 from .token_bus import TokenBus
 from .monitor import run_monitor
+from rich.console import Console
+
+console = Console()
 
 
 def parse_and_launch(yaml_path: str):
@@ -13,7 +16,7 @@ def parse_and_launch(yaml_path: str):
     OmniTrain process orchestrator. Manages the lifecycle of plugins and monitoring.
     """
     if not os.path.exists(yaml_path):
-        print(f"[Launcher] Config error: {yaml_path} not found.")
+        console.print(f"[red]ERROR[/] Config not found: [white]{yaml_path}[/]")
         return
 
     with open(yaml_path, 'r') as f:
@@ -24,7 +27,7 @@ def parse_and_launch(yaml_path: str):
     d_model = model_cfg.get('d_model', 512)
     n_latents = model_cfg.get('n_latents', 128)
 
-    print(f"🧠 Initializing FusionCore (d={d_model}, latents={n_latents})")
+    console.print(f"[white]INFO[/] FusionCore: d={d_model}, latents={n_latents}")
     # Lazy import to avoid CUDA initialization in main process if not needed
     from .fusion_core import FusionCore
     model = FusionCore(n_latents=n_latents, d_model=d_model)
@@ -52,13 +55,13 @@ def parse_and_launch(yaml_path: str):
             p = multiprocessing.Process(target=instance.run, name=f"Worker-{modal_id}", daemon=True)
             p.start()
             workers.append(p)
-            print(f"[Launcher] OK: {modal_id} at {freq}Hz")
+            console.print(f"[color(117)]OK[/] Worker started: [white]{modal_id}[/] at {freq}Hz")
 
         except Exception as e:
-            print(f"[Launcher] Error spawning {modal_id}: {e}")
+            console.print(f"[red]ERROR[/] Worker spawn failure: [white]{modal_id}[/] ({e})")
 
     def graceful_exit(sig, frame):
-        print("\n[Launcher] System signal received. Cleaning up...")
+        console.print("\n[yellow]ABORT[/] Terminating workers and cleaning bus...")
         for p in workers:
             p.terminate()
         bus.cleanup()
@@ -70,5 +73,5 @@ def parse_and_launch(yaml_path: str):
     try:
         run_monitor(bus)
     except Exception as e:
-        print(f"[Launcher] Monitor Error: {e}")
+        console.print(f"[red]ERROR[/] Monitor failure: {e}")
         graceful_exit(None, None)

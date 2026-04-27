@@ -15,7 +15,7 @@ def perform_health_check():
         'src/omnitrain/token_bus.py',
         'src/omnitrain/fusion_core.py',
         'src/omnitrain/cli.py',
-        'logic_bot_v2.omni'
+        'SafeDelivery_Robot_trained.omni'
     ]
     for f in required_files:
         if os.path.exists(f):
@@ -33,8 +33,8 @@ def perform_health_check():
 
     # 3. Check AI Backbone (Tensor-first Forward)
     try:
-        core, heads, meta = OmniExporter().load_as_inference("logic_bot_v2.omni")
-        print(f"✔ AI Brain (logic_bot_v2.omni): LOADED & RECONSTRUCTED")
+        core, heads, meta = OmniExporter().load_as_inference("SafeDelivery_Robot_trained.omni")
+        print(f"✔ AI Brain (SafeDelivery_Robot_trained.omni): LOADED & RECONSTRUCTED")
         print(f"   - d_model: {meta.get('d_model', 'N/A')}")
         print(f"   - n_latents: {meta.get('n_latents', 'N/A')}")
 
