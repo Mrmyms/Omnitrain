@@ -169,4 +169,4 @@ class UniversalTrainer:
         # Final Export
         export_path = f"{self.config.get('project', 'robot')}_final.omni"
         OmniExporter().save(self.core, self.heads, self.config, export_path)
-        console.print(f"[bold green]✅ Exported to {export_path}[/bold green]")
+        console.print(f"[bold green]Exported to {export_path}[/bold green]")

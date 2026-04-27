@@ -34,16 +34,16 @@ def main():
             # Rebuild shield
             shield = OmniShieldGuard.from_config(meta, heads['drive_control'], d_model=core.d_model)
     except Exception as e:
-        console.print(f"[bold red]❌ Error loading brain:[/bold red] {e}")
+        console.print(f"[bold red]ERROR loading brain:[/bold red] {e}")
         return
         
     core_name = 'LiquidFusionCore (CfC)' if hasattr(core, 'liquid_cell') else 'FusionCore (Transformer)'
     
     # System Info Header
     info_table = Table(show_header=False, box=None)
-    info_table.add_row("🧠 Architecture:", f"[bold magenta]{core_name}[/bold magenta]")
-    info_table.add_row("🛡️  OmniShield:", "[bold green]Active (3-Tiers)[/bold green]")
-    info_table.add_row("⚡ Status:", "[bold yellow]Waiting for telemetry...[/bold yellow]")
+    info_table.add_row("Architecture:", f"[bold magenta]{core_name}[/bold magenta]")
+    info_table.add_row("OmniShield:", "[bold green]Active (3-Tiers)[/bold green]")
+    info_table.add_row("Status:", "[bold yellow]Waiting for telemetry...[/bold yellow]")
     console.print(Panel(info_table, border_style="green"))
     
     prev_latents = None
@@ -52,12 +52,12 @@ def main():
     while True:
         try:
             console.print("\n[bold dim]─── Sensor Inputs ───────────────────────────────────────[/bold dim]")
-            user_input = Prompt.ask("📡 [bold cyan]Lidar Distance[/bold cyan] (meters, e.g. 1.5)")
+            user_input = Prompt.ask("[bold cyan]Lidar Distance[/bold cyan] (meters, e.g. 1.5)")
             if user_input.lower() in ['exit', 'q', 'quit']:
                 break
             lidar_val = float(user_input)
             
-            user_batt = Prompt.ask("🔋 [bold cyan]Battery Level[/bold cyan] (percentage, e.g. 80)")
+            user_batt = Prompt.ask("[bold cyan]Battery Level[/bold cyan] (percentage, e.g. 80)")
             if user_batt.lower() in ['exit', 'q', 'quit']:
                 break
             batt_val = float(user_batt) / 100.0
@@ -89,13 +89,13 @@ def main():
             h_x = result['h_x'].mean().item()
             
             # --- UI RENDERING ---
-            table = Table(title="📊 Live Telemetry", show_header=True, header_style="bold magenta", expand=True)
+            table = Table(title="Live Telemetry", show_header=True, header_style="bold magenta", expand=True)
             table.add_column("Metric", style="dim", width=20)
             table.add_column("Value")
             table.add_column("System Status")
             
             # Time Metric
-            table.add_row("Delta Time (dt)", f"{dt_val*1000:.1f} ms", "⏳ Kernel Physics")
+            table.add_row("Delta Time (dt)", f"{dt_val*1000:.1f} ms", "Kernel Physics")
             
             # Action Metric
             action_str = f"Vel: {action[0]:.2f}m/s | Turn: {action[1]:.2f}rad"

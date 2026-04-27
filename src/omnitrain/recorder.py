@@ -59,7 +59,7 @@ class OmniRecorder:
         self.active = True
         file_exists = os.path.exists(output_path)
         
-        console.print(f"[bold green]⏺ RECORDING STARTED[/bold green] -> [white]{output_path}[/white] at {hz}Hz")
+        console.print(f"[bold green]RECORDING STARTED[/bold green] -> [white]{output_path}[/white] at {hz}Hz")
         console.print(f"[dim]Headers: {', '.join(self.headers)}[/dim]")
 
         with open(output_path, 'a', newline='') as f:
@@ -128,4 +128,4 @@ class OmniRecorder:
 
             except KeyboardInterrupt:
                 self.active = False
-                console.print("\n[bold yellow]⏹ RECORDING STOPPED[/bold yellow]")
+                console.print("\n[bold yellow]RECORDING STOPPED[/bold yellow]")

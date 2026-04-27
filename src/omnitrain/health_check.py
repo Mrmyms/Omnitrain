@@ -7,7 +7,7 @@ from omnitrain.exporter import OmniExporter
 
 def perform_health_check():
     print("\n" + "=" * 50)
-    print("🛡️  OMNITRAIN 2.0 INDUSTRIAL HEALTH CHECK")
+    print("OMNITRAIN 4.0 INDUSTRIAL HEALTH CHECK")
     print("=" * 50)
 
     # 1. Check Required Files
@@ -19,22 +19,22 @@ def perform_health_check():
     ]
     for f in required_files:
         if os.path.exists(f):
-            print(f"✔ File Found: {f}")
+            print(f"[OK] File Found: {f}")
         else:
-            print(f"❌ File Missing: {f}")
+            print(f"[ERROR] File Missing: {f}")
 
     # 2. Check C++ Transport Layer
     try:
         bus = TokenBus(max_tokens=100, create=True)
-        print("✔ C++ Transport Layer (Posix SHM): LOADED & ACTIVE")
+        print("[OK] C++ Transport Layer (Posix SHM): LOADED & ACTIVE")
         bus.cleanup()
     except Exception as e:
-        print(f"❌ C++ Transport Layer Error: {e}")
+        print(f"[ERROR] C++ Transport Layer Error: {e}")
 
     # 3. Check AI Backbone (Tensor-first Forward)
     try:
         core, heads, meta = OmniExporter().load_as_inference("SafeDelivery_Robot_trained.omni")
-        print(f"✔ AI Brain (SafeDelivery_Robot_trained.omni): LOADED & RECONSTRUCTED")
+        print(f"[OK] AI Brain (SafeDelivery_Robot_trained.omni): LOADED & RECONSTRUCTED")
         print(f"   - d_model: {meta.get('d_model', 'N/A')}")
         print(f"   - n_latents: {meta.get('n_latents', 'N/A')}")
 
@@ -43,14 +43,14 @@ def perform_health_check():
         mock_times = torch.zeros(1, 1, 1)
         with torch.no_grad():
             _ = core(mock_sensor, mock_times)
-        print("✔ Tensor-first Inference Loop: STABLE")
+        print("[OK] Tensor-first Inference Loop: STABLE")
     except Exception as e:
-        print(f"❌ AI Backbone Error: {e}")
+        print(f"[ERROR] AI Backbone Error: {e}")
 
     # 4. Check CLI
-    print("\n💡 Tip: Run 'omni --help' to verify the system-wide CLI binary.")
+    print("\nINFO: Run 'omni --help' to verify the system-wide CLI binary.")
     print("=" * 50)
-    print("✅ SYSTEM STATUS: PRODUCTION READY")
+    print("SYSTEM STATUS: PRODUCTION READY")
     print("=" * 50 + "\n")
 
 

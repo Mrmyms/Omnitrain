@@ -1,4 +1,4 @@
-# Pipeline de Entrenamiento Industrial: Redes Neuronales Líquidas (CfC) 🎓🤖
+# Pipeline de Entrenamiento Industrial: Redes Neuronales Líquidas (CfC)
 
 Este documento define la metodología oficial recomendada para entrenar sistemas robóticos autónomos impulsados por **Liquid Neural Networks (LNN)** y arquitecturas **Closed-form Continuous-time (CfC)**. La metodología está diseñada para pasar de la simulación al mundo físico (Sim-to-Real) con garantías de seguridad matemática.
 
@@ -36,7 +36,7 @@ Pulido final del modelo interactuando en tiempo real con el simulador y el escud
 
 ---
 
-## 📚 Referencias y Fuentes Oficiales (MIT)
+## Referencias y Fuentes Oficiales (MIT)
 
 El pipeline detallado anteriormente se basa en metodologías comprobadas y publicadas por el grupo de Robótica e Inteligencia Artificial del MIT:
 
