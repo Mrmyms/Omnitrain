@@ -1,4 +1,4 @@
-# OmniTrain: Liquid Intelligence
+# OmniTrain 1.0.0: Liquid Intelligence
 ### Industrial Liquid Neural Networks & Formal Safety for Robotics
 
 ---

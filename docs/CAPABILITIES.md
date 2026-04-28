@@ -1,5 +1,5 @@
 # OmniTrain: Capabilities & Features Specification
-**Official Capabilities Paper** | **Version 1.0**
+**Official Capabilities Paper** | **Version 1.0.0**
 
 ---
 

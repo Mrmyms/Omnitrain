@@ -1,12 +1,12 @@
 """
-OmniTrain 3.0 Supreme Intelligence Smoke Test
+OmniTrain 1.0.0 Supreme Intelligence Smoke Test
 Verifies all 5 new features:
   1. Auto-Modality (AdaptiveInputProjector)
   2. Stateful Latents (RecurrentLatentMemory)
   3. DLA integration (structural check)
   4. FSDP trainer (structural check)
   5. Formal Safety Verification (SafetyGuard)
-Plus backward compatibility with v2.0 tests.
+Plus backward compatibility with v1.0 bundles.
 """
 import sys
 import os
@@ -29,10 +29,10 @@ def test(name, condition, detail=""):
     print(msg)
 
 
-# ── v2.0 backward compatibility ──
+# ── v1.0 backward compatibility ──
 
 def test_tensor_first_forward():
-    print("\n--- Test 1: Tensor-First Forward (v2 Compat) ---")
+    print("\n--- Test 1: Tensor-First Forward (v1 Compat) ---")
     from omnitrain.fusion_core import FusionCore
     core = FusionCore(n_latents=64, d_model=256, n_heads=4, num_layers=2, input_dim=512)
     core.eval()
@@ -40,20 +40,20 @@ def test_tensor_first_forward():
     timestamps = torch.randn(2, 50, 1)
     with torch.no_grad():
         output = core(sensor_data, timestamps)
-    test("v2 forward shape is (Batch, n_latents, d_model)", output.shape == (2, 64, 256))
+    test("v1 forward shape is (Batch, n_latents, d_model)", output.shape == (2, 64, 256))
 
 
 def test_metadata_loading():
-    print("\n--- Test 2: Metadata-Driven Loading (v2 Compat) ---")
+    print("\n--- Test 2: Metadata-Driven Loading (v1 Compat) ---")
     from omnitrain.fusion_core import FusionCore
     from omnitrain.heads import ClassificationHead
     from omnitrain.exporter import OmniExporter
-    tmp = "/tmp/test_v3_bundle.omni"
+    tmp = "/tmp/test_v1_bundle.omni"
     core = FusionCore(n_latents=32, d_model=128, n_heads=4, num_layers=2, input_dim=256)
     heads = {'safety': ClassificationHead(num_classes=2, d_model=128)}
     OmniExporter().save(core, heads, {"test": True}, tmp)
     bundle = torch.load(tmp)
-    test("Bundle version is 3.0-supreme", bundle['version'] == '3.0-supreme')
+    test("Bundle version is 1.0.0", bundle['version'] == '1.0.0')
     test("Architecture has auto_modality flag", 'has_auto_modality' in bundle['architecture'])
     test("Architecture has stateful_memory flag", 'has_stateful_memory' in bundle['architecture'])
     loaded_core, _, _ = OmniExporter().load_as_inference(tmp)
@@ -65,7 +65,7 @@ def test_metadata_loading():
     os.remove(tmp)
 
 
-# ── v3.0 new features ──
+# ── v1.0 new features ──
 
 def test_auto_modality():
     print("\n--- Test 3: Auto-Modality (AdaptiveInputProjector) ---")
@@ -185,7 +185,7 @@ def test_language_unification():
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("🔬 OMNITRAIN 3.0 SUPREME INTELLIGENCE SMOKE TEST")
+    print("🔬 OMNITRAIN 1.0.0 SUPREME INTELLIGENCE SMOKE TEST")
     print("=" * 60)
 
     test_tensor_first_forward()

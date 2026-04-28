@@ -1,5 +1,5 @@
 # OmniTrain: Theoretical Foundations & Architectural White Paper
-**Version 1.2** | **Industrial Robotics & Autonomous Systems**
+**Version 1.0.0** | **Industrial Robotics & Autonomous Systems**
 *Authored by the OmniTrain Research Group*
 
 ---

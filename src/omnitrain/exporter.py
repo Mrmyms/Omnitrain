@@ -21,7 +21,7 @@ class OmniExporter:
             'n_heads': getattr(model, 'n_heads', None),
             'num_layers': getattr(model, 'num_layers', None),
             'input_dim': model.input_dim,
-            # v3.0/v4.0 feature flags
+            # v1.0.0 feature flags
             'has_auto_modality': hasattr(model, 'input_projector'),
             'has_stateful_memory': hasattr(model, 'memory'),
             'is_liquid_core': hasattr(model, 'liquid_cell'),
@@ -48,7 +48,7 @@ class OmniExporter:
             'metadata': config,
             'architecture': architecture,
             'timestamp': datetime.datetime.utcnow().isoformat(),
-            'version': '3.0-supreme'
+            'version': '1.0.0'
         }
         torch.save(bundle, export_path)
 

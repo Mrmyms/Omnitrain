@@ -67,7 +67,7 @@ def print_dashboard():
 
     left_content = Align.center(
         f"[bold color(117)]{mascot}[/]\n"
-        f"[bold white]OMNITRAIN v2.0[/]\n"
+        f"[bold white]OMNITRAIN v1.0.0[/]\n"
         f"[dim]Project: [white]{project_name}[/]\n"
         "[dim]Safety: [green]Active[/]",
         vertical="middle"
@@ -133,7 +133,7 @@ def handle_init(args):
             "num_layers": 3
         },
         "inputs": [
-            {"id": "lidar_front", "plugin": "plugins.DummyLidarPlugin", "hz": 20}
+            {"id": "sensor_primary", "plugin": "plugins_real.CSVModalityPlugin", "hz": 10, "csv_path": "data/sample_sensor.csv"}
         ],
     }
     
@@ -333,7 +333,9 @@ def handle_status(args):
     table.add_column("Details", style="dim")
 
     # 1. Bus Check
-    bus_active = "[green]ONLINE[/]" if os.path.exists("/dev/shm") else "[yellow]LOCAL-ONLY[/]"
+    is_mac = platform.system() == "Darwin"
+    shm_available = os.path.exists("/dev/shm") or is_mac
+    bus_active = "[green]ONLINE[/]" if shm_available else "[yellow]LOCAL-ONLY[/]"
     table.add_row("TokenBus (IPC)", bus_active, "POSIX Shared Memory")
 
     # 2. Hardware
