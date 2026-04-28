@@ -30,4 +30,13 @@
        / (o) \
        \  _  /
         '---'
+
+## Option 5: The Omni-Octo (Official v2.0 - Liquid Core)
 ```
+  .---.
+ ( @ @ )
+  )   (
+ /|||||\
+ " " " "
+```
+*Selected for its resemblance to the Liquid Neural Network (LNN) architecture and versatile "multi-bus" connectivity.*

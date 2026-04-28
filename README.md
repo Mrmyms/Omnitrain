@@ -61,6 +61,8 @@ graph TD
 ## Resources
 
 *   **[Technical Deep Dive](docs/DETAILS.md)**: CfC cells and ICNN barriers.
+*   **[Theoretical Frameworks](docs/THEORETICAL_FRAMEWORKS.md)**: Liquid Networks, ICNNs, and CTMT math.
+*   **[System Capabilities](docs/CAPABILITIES.md)**: Full feature specification and Capabilities Paper.
 *   **[Training Pipeline](docs/TRAINING_PIPELINE.md)**: 3-phase curriculum (Imitation, Safety, Chaos).
 *   **[CLI Reference](docs/DETAILS.md#cli-reference)**: Management console usage.
 

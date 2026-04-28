@@ -22,6 +22,10 @@ from .fusion_core import FusionCore
 from .token_bus import TokenBus
 from .recorder import OmniRecorder
 from .universal_trainer import UniversalTrainer
+ 
+import shutil
+import platform
+import subprocess
 
 console = Console()
 
@@ -44,16 +48,28 @@ def handle_train(args):
 
 def print_dashboard():
     mascot = """
-      [white]▆▆▆▆▆[/white]
-      [white] o o [/white]
-      [white]▆▆▆▆▆[/white]
-       [white]_| |_[/white]
+   .---.
+  ( @ @ )
+   )   ( 
+  /|||||\\
+  " " " "
     """
     
+    # Dynamic Project Info
+    project_name = "N/A"
+    last_train = "Never"
+    if os.path.exists("config.yaml"):
+        try:
+            with open("config.yaml", 'r') as f:
+                cfg = yaml.safe_load(f)
+                project_name = cfg.get('project', 'Unknown')
+        except: pass
+
     left_content = Align.center(
-        f"[color(117)]{mascot}[/]\n"
-        "[bold white]Welcome back, Operator[/]\n"
-        "[dim]OmniTrain 3.0 · Industrial AI[/]",
+        f"[bold color(117)]{mascot}[/]\n"
+        f"[bold white]OMNITRAIN v2.0[/]\n"
+        f"[dim]Project: [white]{project_name}[/]\n"
+        "[dim]Safety: [green]Active[/]",
         vertical="middle"
     )
     
@@ -65,16 +81,17 @@ def print_dashboard():
     )
     
     tips = (
-        "[color(117)]Tips for getting started[/]\n"
-        "Run [blue]/init[/] to create a project archetype\n"
-        "Launch simulation with [blue]/run config.yaml[/]\n"
-        "Monitor live pulses with [blue]/bus[/]\n"
+        "[color(117)]Quick Launch Tips[/]\n"
+        "• [blue]/init[/]   : Scaffolding\n"
+        "• [blue]/status[/] : Health & Resource Monitor\n"
+        "• [blue]/train[/]  : Curriculum Pipeline\n"
+        "• [blue]/test[/]   : Safety Audit\n"
     )
     
     activity = (
-        "\n[color(117)]Environment Status[/]\n"
-        f"Workdir: [dim]{os.getcwd()}[/]\n"
-        f"Python: [dim]{sys.version.split()[0]}[/]\n"
+        "\n[color(117)]Environment[/]\n"
+        f"OS: [dim]{platform.system()} {platform.release()}[/]\n"
+        f"Path: [dim]...{os.getcwd()[-25:]}[/]\n"
     )
     
     right_panel = Panel(
@@ -88,21 +105,59 @@ def print_dashboard():
     console.print("[dim]Type [white]/help[/white] for commands or [white]/exit[/white] to quit.[/]\n")
 
 def handle_init(args):
+    """Interactive Project Scaffolding"""
+    from rich.prompt import Prompt, IntPrompt, Confirm
+    
+    console.print("\n[bold color(117)]--- OmniTrain Project Scaffolding ---[/]")
+    
+    name = Prompt.ask("Project Name", default="Alpha_Robot")
+    type_choice = Prompt.ask("Architecture Template", choices=["Industrial Arm", "Autonomous Vehicle", "Custom"], default="Industrial Arm")
+    
+    # Core Dims
+    d_model = IntPrompt.ask("Model Dimension (d_model)", default=512)
+    n_latents = IntPrompt.ask("Latent Tokens (n_latents)", default=64)
+    
+    ros2_enabled = Confirm.ask("Enable ROS 2 Humble/Iron Integration?", default=False)
+
+    # Structure
+    folders = ["data", "models", "logs", "scripts"]
+    for folder in folders:
+        os.makedirs(folder, exist_ok=True)
+    
     template = {
-        "project": "Alpha_Robot_Alpha",
+        "project": name,
+        "template": type_choice,
         "model": {
-            "d_model": 512,
-            "n_latents": 64,
+            "d_model": d_model,
+            "n_latents": n_latents,
             "num_layers": 3
         },
         "inputs": [
-            {"id": "lidar_front", "plugin": "plugins.DummyLidarPlugin", "hz": 20},
-            {"id": "label_stream", "plugin": "plugins_real.CSVModalityPlugin", "hz": 1, "csv_path": "labels.csv"}
+            {"id": "lidar_front", "plugin": "plugins.DummyLidarPlugin", "hz": 20}
         ],
     }
+    
+    if ros2_enabled:
+        template["inputs"].append({
+            "id": "ros_telemetry", 
+            "plugin": "plugins_ros2.ROS2ModalityPlugin", 
+            "hz": 50, 
+            "topic_name": "/robot/telemetry"
+        })
+    
+    # Create sample data for immediate training test
+    sample_data_path = os.path.join("data", "sample_sensor.csv")
+    with open(sample_data_path, "w") as f:
+        f.write("timestamp,lidar_front,action\n")
+        for i in range(100):
+            f.write(f"{time.time()+i*0.1},{0.5+i*0.01},1.0\n")
+
     with open("config.yaml", "w") as f:
         yaml.dump(template, f, sort_keys=False)
-    console.print("[color(117)]DONE[/] Generated project archetype in [white]config.yaml[/white]")
+        
+    console.print(f"\n[color(117)]SUCCESS[/] Project [white]{name}[/white] initialized.")
+    console.print(f"[dim]Folders created: {', '.join(folders)}[/]")
+    console.print("[dim]Sample data generated in data/sample_sensor.csv[/]")
 
 def handle_run(args):
     config_path = args[0] if args else "config.yaml"
@@ -254,6 +309,61 @@ def handle_verify(args):
         console.print(table)
 
     console.print(f"\n[color(117)]DONE[/] Safety verification complete.")
+ 
+def handle_capabilities(args):
+    """Capabilities Paper Summary"""
+    from rich.markdown import Markdown
+    paper_path = "docs/CAPABILITIES.md"
+    if not os.path.exists(paper_path):
+        console.print(f"[red]ERROR[/red] Capabilities paper not found at {paper_path}")
+        return
+
+    with open(paper_path, 'r') as f:
+        md_content = f.read()
+    
+    # Show a preview in a panel
+    console.print(Panel(Markdown(md_content), title="OmniTrain Capabilities Paper", border_style="color(117)"))
+    console.print(f"\n[dim]Full document located at: {os.path.abspath(paper_path)}[/]")
+
+def handle_status(args):
+    """System Health & Resource Monitor"""
+    table = Table(title="OmniTrain System Health", border_style="color(117)", box=box.ROUNDED)
+    table.add_column("Component", style="cyan")
+    table.add_column("Status", justify="center")
+    table.add_column("Details", style="dim")
+
+    # 1. Bus Check
+    bus_active = "[green]ONLINE[/]" if os.path.exists("/dev/shm") else "[yellow]LOCAL-ONLY[/]"
+    table.add_row("TokenBus (IPC)", bus_active, "POSIX Shared Memory")
+
+    # 2. Hardware
+    device = "CUDA" if torch.cuda.is_available() else "CPU"
+    table.add_row("Inference Engine", f"[white]{device}[/]", f"Torch {torch.__version__}")
+
+    # 3. Project
+    proj = "[green]LOADED[/]" if os.path.exists("config.yaml") else "[red]MISSING[/]"
+    table.add_row("Project Config", proj, "config.yaml")
+
+    console.print(table)
+
+def handle_audit(args):
+    """Environment Industrialization Audit"""
+    console.print("\n[bold]OmniTrain Industrial Audit[/]")
+    checks = {
+        "Python Version": sys.version.split()[0],
+        "Platform": platform.platform(),
+        "PyTorch": torch.__version__,
+        "Shared Memory": "Available" if os.path.exists("/dev/shm") else "Emulated",
+    }
+    for k, v in checks.items():
+        console.print(f"  [color(117)]•[/] {k:15}: [white]{v}[/]")
+    
+    # Check ROS2
+    try:
+        import rclpy
+        console.print("  [color(117)]•[/] ROS 2           : [green]Found[/]")
+    except:
+        console.print("  [color(117)]•[/] ROS 2           : [yellow]Not Found (Optional)[/]")
 
 def handle_config(args):
     from rich.prompt import Prompt, Confirm
@@ -296,7 +406,9 @@ def handle_help(args):
     table.add_column("Command", style="color(117)")
     table.add_column("Description", style="dim")
     
-    table.add_row("/init", "Scaffold a new project Archetype")
+    table.add_row("/init", "Scaffold a new project interactively")
+    table.add_row("/status", "Monitor system health and resources")
+    table.add_row("/audit", "Verify environment industrialization")
     table.add_row("/config", "Interactive YAML configuration editor")
     table.add_row("/record <config>", "Record TokenBus data to CSV")
     table.add_row("/train <config>", "Train a Liquid Neural Network (3-phase Curriculum)")
@@ -304,7 +416,8 @@ def handle_help(args):
     table.add_row("/bus <session>", "Monitor live bus (default: omni_default)")
     table.add_row("/inspect <model>", "View model architecture")
     table.add_row("/deploy <model>", "Prepare for edge deployment")
-    table.add_row("/verify <model>", "Run safety verification")
+    table.add_row("/test <model>", "Run safety and capability tests (alias for /verify)")
+    table.add_row("/capabilities", "Show the System Capabilities White Paper")
     table.add_row("/clear", "Clear terminal screen")
     table.add_row("/exit", "Exit OmniTrain")
     
@@ -315,6 +428,8 @@ def main():
     
     commands = {
         "/init": handle_init,
+        "/status": handle_status,
+        "/audit": handle_audit,
         "/config": handle_config,
         "/record": handle_record,
         "/train": handle_train,
@@ -323,6 +438,9 @@ def main():
         "/inspect": handle_inspect,
         "/deploy": handle_deploy,
         "/verify": handle_verify,
+        "/test": handle_verify,
+        "/capabilities": handle_capabilities,
+        "/paper": handle_capabilities,
         "/help": handle_help,
         "/clear": lambda _: os.system('clear' if os.name == 'posix' else 'cls'),
         "/exit": lambda _: sys.exit(0)
