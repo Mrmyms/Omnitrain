@@ -59,17 +59,19 @@ class UniversalTrainer:
             config = yaml.safe_load(f)
 
         m = config['model']
-        # Find primary sensor dimension
-        input_dim = 32
+        # Robust Input Dimension Detection
+        input_dim = m.get('input_dim', 512)
         for inp in config.get('inputs', []):
-            if 'lidar' in inp['id']:
+            if 'dim' in inp:
                 input_dim = inp['dim']
                 break
 
+        # NEW: Pass the full config to LiquidFusionCore to enable Multi-Brain Hub detection
         core = LiquidFusionCore(
             n_latents=m.get('n_latents', 32),
             d_model=m.get('d_model', 256),
-            input_dim=input_dim
+            input_dim=input_dim,
+            config=config 
         )
 
         heads = {}
@@ -96,45 +98,47 @@ class UniversalTrainer:
             self.optimizer.zero_grad()
             
             B, T = batch['dt'].shape
-            prev_latents = None
-            epoch_loss = 0
+            prev_step_latents = None
+            total_sequence_loss = 0
 
             for t in range(T):
-                # Fuse inputs
-                current_latents = None
+                dt_t = batch['dt'][:, t]
+                current_step_latents = prev_step_latents
+                
                 for m_id, sensor_seq in batch['inputs'].items():
-                    dt_t = batch['dt'][:, t]
                     sensor_t = sensor_seq[:, t]
-                    current_latents = self.core(sensor_t, dt_t, modal_id=m_id, prev_latents=current_latents)
+                    current_step_latents = self.core(
+                        sensor_t, 
+                        dt_t, 
+                        modal_id=m_id, 
+                        prev_latents=current_step_latents
+                    )
                 
-                # Blend with temporal memory
-                l_out = current_latents # Simplified for now, or use memory module if exists
-                
-                # Losses
                 step_loss = 0
                 for h_id, head in self.heads.items():
-                    pred = head(l_out)
-                    target = batch['targets'][h_id][:, t]
-                    
-                    if isinstance(head, RegressionHead):
-                        loss = self.criterion_mse(pred, target)
-                        metrics['policy'] += loss.item()
-                    else:
-                        loss = self.criterion_ce(pred, target)
-                        metrics['safety'] += loss.item()
-                    step_loss += loss
+                    target_key = h_id if h_id in batch['targets'] else 'action'
+                    if target_key in batch['targets']:
+                        pred = head(current_step_latents)
+                        target = batch['targets'][target_key][:, t]
+                        
+                        if isinstance(head, RegressionHead):
+                            l = self.criterion_mse(pred, target)
+                            metrics['policy'] += l.item()
+                        else:
+                            l = self.criterion_ce(pred, target)
+                            metrics['safety'] += l.item()
+                        step_loss += l
 
-                # Barrier loss
-                state = self.shield.state_extractor(l_out)
+                state = self.shield.state_extractor(current_step_latents)
                 h_x = self.shield.barrier(state)
                 b_loss = self.shield.barrier_loss(h_x) * barrier_weight
                 metrics['barrier'] += b_loss.item()
                 step_loss += b_loss
 
-                epoch_loss += step_loss
-                prev_latents = l_out.detach()
+                total_sequence_loss += step_loss
+                prev_step_latents = current_step_latents
 
-            (epoch_loss / T).backward()
+            (total_sequence_loss / T).backward()
             torch.nn.utils.clip_grad_norm_(self.core.parameters(), 1.0)
             self.optimizer.step()
             metrics['count'] += 1
@@ -143,28 +147,41 @@ class UniversalTrainer:
         return {k: v / denom for k, v in metrics.items() if k != 'count'}
 
     def fit(self, csv_path: str, epochs: int = 50, batch_size: int = 16, seq_len: int = 32):
-        p1_end = int(epochs * 0.5)
-        p2_end = int(epochs * 0.8)
+        # 3-Tier "Chaos" Curriculum using the theoretical Scheduler
+        scheduler = CurriculumScheduler(total_epochs=epochs)
+        scheduler.add_phase("Phase 1: Imitation", start_epoch=0, chaos_level=0, description="Behavior Cloning")
+        scheduler.add_phase("Phase 2: Safety", start_epoch=int(epochs * 0.5), chaos_level=1, description="CBF Constraint Learning")
+        scheduler.add_phase("Phase 3: Chaos", start_epoch=int(epochs * 0.8), chaos_level=2, description="Domain Randomization (OOD)")
 
-        ds_clean = OmniLogDataset(csv_path, self.config, seq_len, chaos_level=0)
-        ds_chaos = OmniLogDataset(csv_path, self.config, seq_len, chaos_level=2)
+        # Datasets per chaos level
+        datasets = {
+            0: OmniLogDataset(csv_path, self.config, seq_len, chaos_level=0),
+            1: OmniLogDataset(csv_path, self.config, seq_len, chaos_level=1),
+            2: OmniLogDataset(csv_path, self.config, seq_len, chaos_level=2),
+        }
 
         with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), BarColumn(), MofNCompleteColumn(), console=console) as progress:
             task = progress.add_task("Training...", total=epochs)
             for epoch in range(epochs):
-                if epoch < p1_end:
-                    ds, phase, bw = ds_clean, "Phase 1: Imitation", 0.1
-                elif epoch < p2_end:
-                    ds, phase, bw = ds_chaos, "Phase 2: Robustness", 1.0
+                phase_info = scheduler.get_current_phase()
+                ds = datasets[phase_info.chaos_level]
+                
+                # Dynamic barrier weight based on phase
+                if phase_info.chaos_level == 0:
+                    bw = 0.1
+                elif phase_info.chaos_level == 1:
+                    bw = 1.0
                 else:
-                    ds, phase, bw = ds_chaos, "Phase 3: Calibration", 2.0
+                    bw = 2.0
 
                 loader = DataLoader(ds, batch_size=batch_size, shuffle=True)
                 m = self._train_epoch(loader, barrier_weight=bw)
                 
-                progress.update(task, advance=1, description=f"[color(117)]{phase}[/] Loss: {m['policy']:.4f}")
+                progress.update(task, advance=1, description=f"[color(117)]{phase_info.name}[/] Loss: {m['policy']:.4f}")
                 if (epoch + 1) % 10 == 0:
                     console.print(f"Epoch {epoch+1} | Policy: {m['policy']:.4f} | Barrier: {m['barrier']:.4f}")
+                
+                scheduler.step()
 
         # Final Export
         export_path = f"{self.config.get('project', 'robot')}_final.omni"

@@ -39,7 +39,9 @@ action = result['action'] # Safe action via OmniShield
 ## Core Pillars
 
 *   **Liquid Brain (CfC)**: Closed-form Continuous-time networks for extreme OOD robustness and temporal stability.
+*   **Continuous Temporal Encoding (CTE)**: Absolute arrival time projection into high-dimensional sinusoidal latent space for asynchronous sensor processing.
 *   **OmniShield (ICNN)**: Formal safety verification using Input Convex Neural Networks to guarantee safe operational boundaries.
+*   **Curriculum Scheduler**: Automated 3-Phase progression (Imitation, Safety, Chaos) seamlessly integrated into the training pipeline.
 *   **OmniStream**: Universal sensor ingestion that auto-detects and transforms any data type (Vision, Vector, Scalar).
 *   **TokenBus C++**: High-speed Shared Memory transport for sub-millisecond inter-process communication.
 
@@ -49,7 +51,7 @@ action = result['action'] # Safe action via OmniShield
 
 ```mermaid
 graph TD
-    A[Universal Sensors] -->|OmniStream| B(LiquidFusionCore)
+    A[Universal Sensors] -->|OmniStream + CTE| B(LiquidFusionCore)
     B -->|Latents| C{OmniShield v2}
     C -->|Safe| D[Motor Command]
     C -->|Danger| E[Emergency Stop / Projection]

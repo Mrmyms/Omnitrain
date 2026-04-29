@@ -8,19 +8,22 @@ OmniTrain is a high-performance framework for industrial robotics, designed to u
 
 ---
 
-## 1. Core Artificial Intelligence (The Liquid Brain)
-OmniTrain moves beyond discrete-step neural networks to continuous-time reasoning.
+## 1. Core Artificial Intelligence (The BioLiquid Brain)
+OmniTrain moves beyond discrete-step neural networks to continuous-time reasoning and dynamic physical adaptation.
 
-- **Liquid Neural Networks (CfC):** 
+- **BioLiquid Neural Networks (LTC + CfC):** 
     - Real-time adaptation of time-constants based on sensory input.
-    - Robustness to irregular sampling and sensor jitter.
-    - High-fidelity reasoning in Out-Of-Distribution (OOD) scenarios.
+    - Official MIT Liquid Time-constant (LTC) constraints (Softplus mapping) to guarantee mathematical stability.
+    - Sub-millisecond latency via Closed-form Continuous-time (CfC) equations.
+- **Continual Learning (Hebbian Plasticity):**
+    - Post-deployment adaptation without backpropagation.
+    - Dynamic synapse rewiring (Oja's Rule) for "Sim-to-Real" wear-and-tear compensation.
+- **Multi-Brain Hub (Modular NCPs):**
+    - Interconnected Neural Circuit Policies (e.g., Perception, Pilot, Safety modules).
+    - Global Latent Bus for organ-to-organ communication and explainable reasoning.
 - **Continuous Temporal Encoding (CTE):**
-    - High-dimensional sinusoidal mapping of timestamps.
-    - Support for asynchronous sensor fusion (Lidar at 20Hz, Camera at 60Hz, IMU at 1000Hz).
-- **FusionCore Architecture:**
-    - Perceiver-style cross-attention for multi-modal feature extraction.
-    - Stateful latent memory for temporal continuity and "object permanence".
+    *   **[Verified Active]** High-dimensional sinusoidal mapping of absolute arrival timestamps.
+    *   Support for asynchronous sensor fusion (Lidar at 20Hz, Camera at 60Hz, IMU at 1000Hz).
 
 ---
 

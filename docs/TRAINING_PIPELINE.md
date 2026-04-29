@@ -4,7 +4,7 @@ Este documento define la metodología oficial recomendada para entrenar sistemas
 
 ---
 
-## Metodología de 4 Fases (Curriculum Pipeline)
+## Metodología de 5 Fases (Curriculum Pipeline)
 
 Entrenar una LNN requiere un enfoque radicalmente distinto al de un Transformer estático, ya que las derivadas fluyen a través del tiempo continuo ($\Delta t$). Este pipeline sigue los estándares establecidos por MIT CSAIL.
 
@@ -22,10 +22,10 @@ Enseñanza de los reflejos motores base mediante demostraciones humanas.
 
 ### Fase 3: Inyección de Caos (Curriculum & Domain Randomization)
 La ventaja principal de las LNN es su resiliencia natural a condiciones fuera de distribución (Out-of-Distribution - OOD). Esta fase fuerza el desarrollo de esa resiliencia.
-*   **Mecánica:** Se somete al modelo a un "Plan de Estudios" progresivo dentro del simulador:
-    *   *Nivel 1:* Entorno ideal.
-    *   *Nivel 2 (Sensor Dropout):* Se apaga aleatoriamente el 10%-30% de los rayos Lidar.
-    *   *Nivel 3 (Física):* Se aleatoriza la fricción del suelo, la masa del robot y la latencia del bus de control.
+*   **Mecánica:** Se somete al modelo a un "Plan de Estudios" progresivo dentro del simulador gestionado formalmente por la clase `CurriculumScheduler`:
+    *   *Nivel 1 (Imitation):* Entorno ideal, penalización de escudo baja.
+    *   *Nivel 2 (Safety):* Aprendizaje estricto de restricciones CBF.
+    *   *Nivel 3 (Chaos - Domain Randomization):* Se apaga aleatoriamente el 10%-30% de los rayos Lidar y se inyecta ruido Gaussiano.
 *   **Objetivo:** Las neuronas líquidas aprenden a no depender de un sensor ruidoso, equilibrando internamente sus constantes de tiempo para mantener la inercia del movimiento.
 
 ### Fase 4: Calibración de Seguridad y RL (Closed-Loop + CBF)
@@ -33,6 +33,12 @@ Pulido final del modelo interactuando en tiempo real con el simulador y el escud
 *   **Mecánica:** El robot se despliega en Isaac Sim usando Aprendizaje por Refuerzo (RL) como *Soft Actor-Critic*. Si la red neuronal propone una acción peligrosa, el **OmniShield** (Control Barrier Function) proyecta la acción a la zona segura.
 *   **Entrenamiento:** Se penaliza a la red (`Barrier Loss`) cuando obliga al escudo a intervenir. 
 *   **Objetivo:** Un robot que es agresivamente eficiente pero se auto-corrige fracciones de segundo antes de acercarse al límite físico de colisión.
+
+### Fase 5: Aprendizaje Continuo Post-Despliegue (Hebbian Plasticity)
+La verdadera revolución líquida ocurre *después* del entrenamiento, cuando el robot está operando en la fábrica.
+*   **Mecánica:** Los pesos entrenados se congelan, pero se activa una **Matriz de Plasticidad Dinámica** (`w_plastic`). Usando la **Regla de Oja** (plasticidad hebbiana), la red calcula la correlación entre lo que sienten los sensores y lo que deciden las neuronas en tiempo real.
+*   **Fundamento:** "Neuronas que se disparan juntas, se conectan". No requiere backpropagation ni GPU.
+*   **Objetivo:** Adaptación *Sim-to-Real* en vivo. Si un motor se desgasta o un sensor se ensucia, el robot re-cablea sus sinapsis instantáneamente para compensarlo, logrando una supervivencia mecánica sin re-entrenamiento.
 
 ---
 

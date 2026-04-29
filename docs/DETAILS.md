@@ -1,4 +1,5 @@
 # OmniTrain — Technical Deep Dive 
+**Version 1.1.0 (BioLiquid)**
 
 This document contains the detailed technical specifications, architectural insights, and advanced usage guides for the OmniTrain framework.
 
@@ -6,30 +7,47 @@ This document contains the detailed technical specifications, architectural insi
 
 ## Full Architecture
 
-OmniTrain uses a modular, transport-agnostic architecture designed for high-frequency sensor fusion.
+OmniTrain uses a modular, transport-agnostic architecture designed for high-frequency sensor fusion and dynamic physical adaptation.
 
 ```mermaid
 graph TD
     S1[ Lidar Plugin] -->|C++ Publish| TB[(TokenBus<br>C++ SharedMemory<br>100,000Hz+)]
     S2[ Camera Plugin] -->|C++ Publish| TB
     S3[ IMU Plugin] -->|C++ Publish| TB
-    S4[ LLM Embeddings] -->|C++ Publish| TB
-    S5[ Boolean Sensor] -->|C++ Publish| TB
 
     TB -->|Sub-ms Snapshot| AIP[AdaptiveInputProjector<br>Auto-Modality]
-    AIP -->|Unified Tokens| FC[FusionCore CTMT<br>Cross-Attention + CTE]
-    FC -->|Fused Latents| RLM[RecurrentLatentMemory<br>GRU-Gated State]
-    RLM --> OH[Output Heads]
-    OH --> SG[SafetyGuard<br>Formal Verification]
+    AIP -->|Unified Tokens| FC[LiquidFusionCore<br>Spatial Fusion]
+    
+    FC -->|Global Latent Bus| OBH[OmniBrain Hub<br>Modular Neural Circuit]
+    
+    subgraph "NCP: Perception Organ"
+        P1[BioLiquidCell<br>LTC + CfC]
+    end
+    
+    subgraph "NCP: Pilot Organ"
+        P2[BioLiquidCell<br>Continual Learning]
+    end
+    
+    subgraph "NCP: Safety Organ"
+        P3[BioLiquidCell<br>Hebbian Plasticity]
+    end
+    
+    OBH --> P1
+    OBH --> P2
+    P1 --> P2
+    P2 --> P3
+    
+    P3 --> OH[Output Heads]
+    OH --> SG[OmniShield v2<br>ICNN Formal Verification]
     
     SG -->|Safe| ACT[Action Output]
     SG -->|Violation| EMR[Emergency Override]
     
-    subgraph "OmniTrain"
+    subgraph "OmniTrain v1.1.0"
         TB
         AIP
         FC
-        RLM
+        OBH
         OH
         SG
     end
@@ -41,61 +59,56 @@ graph TD
 
 | Feature | Description | Module |
 |:--|:--|:--|
-| **Auto-Modality** | Dynamically creates input projectors for any sensor dimension (256, 512, 1024...) at runtime | `fusion_core.py` |
-| **Stateful Latent Memory** | GRU-gated mechanism that blends previous latent state with current inference for temporal continuity | `fusion_core.py` |
-| **C++ Transport (TokenBus)** | Native Posix SharedMemory bus with atomic circular buffers for zero-copy, sub-millisecond data transfer | `token_bus.py` + `omni_bus_core.cpp` |
-| **Formal Safety Verification** | Hard interval constraints that override neural network outputs to guarantee safe operation | `safety_guard.py` |
-| **Structured Pruning** | L_n structured pruning that physically removes channels while respecting safety-critical layer exclusions | `pruner.py` |
-| **Mixed-Precision Quantization** | INT8/FP32 mixed-precision quantization for edge deployment | `quantize_omni.py` |
-| **DLA → TensorRT → CUDA → CPU** | Hardware acceleration cascade prioritizing NVIDIA DLA for near-zero power inference | `OmniEngine.cpp` |
-| **FSDP Distributed Training** | Fully Sharded Data Parallel for multi-GPU training with mixed precision | `trainer.py` |
-| **ROS 2 Bridge** | Native integration with ROS 2 Humble/Iron for robotics interoperability | `plugins_ros2.py` |
-| **Ollama-style CLI** | Guided command-line interface for project init, monitoring, deployment, and safety audits | `cli.py` |
+| **Multi-Brain Hub** | Organizes neurons into specialized Neural Circuit Policies (NCPs) that communicate via a latent bus. | `fusion_core.py` |
+| **BioLiquidCell (LTC + CfC)** | Fuses the closed-form continuous-time math (CfC) with the bio-physical parameter constraints (LTC) from the official MIT implementation. | `fusion_core.py` |
+| **Continual Learning** | Live, on-the-fly Hebbian Plasticity (Oja's Rule) for Sim-to-Real adaptation without backpropagation. | `fusion_core.py` |
+| **Auto-Modality** | Dynamically creates input projectors for any sensor dimension (256, 512, 1024...) at runtime. | `fusion_core.py` |
+| **C++ Transport (TokenBus)** | Native Posix SharedMemory bus with atomic circular buffers for zero-copy, sub-millisecond data transfer. | `token_bus.py` + `omni_bus_core.cpp` |
+| **Formal Safety Verification** | Input Convex Neural Networks (ICNN) that override neural network outputs to guarantee safe operation. | `safety_guard.py` |
 
 ---
 
 ## Core Concepts
 
-### FusionCore (Continuous-Time Multimodal Transformer)
-The heart of OmniTrain. A Perceiver-style cross-attention transformer with:
-- **Continuous Temporal Encoding (CTE)**: Uses sinusoidal functions on raw timestamps instead of discrete positional embeddings, allowing fusion of sensors running at different frequencies.
-- **Latent Bottleneck**: Fixed-size latent array (e.g., 64 tokens) that compresses all sensor streams into a compact reasoning state.
+### LiquidFusionCore & OmniBrain Hub
+The heart of OmniTrain v1.1.0. It fuses spatial information and feeds it into a modular system of interconnected liquid brains.
+- **Continuous Temporal Encoding (CTE)**: Uses sinusoidal functions on raw timestamps instead of discrete positional embeddings. *Fully implemented in v1.1.1 to map absolute arrival time to the latent space for asynchronous sensor processing.*
+- **BioLiquid Dynamics**: Memory is evolved through time using biological time-constants (capacitance and leakage) bounded strictly via `softplus` projections.
+- **Hebbian Plasticity**: During inference, the network rewires its synapses based on input-output correlation, adapting to mechanical wear automatically.
+- **Curriculum Scheduler**: A formal 3-phase automated progression (Imitation, Safety, Chaos) seamlessly integrated into the `UniversalTrainer` for Domain Randomization and out-of-distribution resilience.
 
 ```python
-from omnitrain.fusion_core import FusionCore
+import torch
+from omnitrain.fusion_core import LiquidFusionCore
 
-core = FusionCore(
-    n_latents=64,     # Number of latent tokens
-    d_model=512,      # Hidden dimension
-    n_heads=8,        # Attention heads
-    num_layers=4,     # Transformer layers
-    input_dim=512     # Default sensor dimension (auto-adjusts)
-)
+# Define a Multi-Brain Hub configuration
+config = {
+    'model': {
+        'n_latents': 32,
+        'd_model': 256,
+        'continual_learning': True,
+        'hub': {
+            'perception': {'sensory': 16, 'inter': 32, 'command': 12, 'motor': 256},
+            'pilot': {'sensory': 8, 'inter': 16, 'command': 8, 'motor': 256, 'inputs_from': ['perception']}
+        }
+    }
+}
 
-# Forward pass with any sensor data
-sensor_data = torch.randn(1, 100, 512)  # (Batch, Tokens, Dim)
-timestamps = torch.randn(1, 100, 1)      # Raw timestamps in seconds
-latents = core(sensor_data, timestamps)   # (1, 64, 512)
+core = LiquidFusionCore(config=config)
+
+# Forward pass with sequence (Batch, Time, Dim)
+sensor_data = torch.randn(1, 10, 512) 
+timestamps = torch.linspace(0.0, 1.0, 10).view(1, 10) # 10 steps of 0.1s
+output = core(sensor_data, timestamps) 
 ```
 
-### Auto-Modality
-No need to pre-configure input dimensions. The `AdaptiveInputProjector` dynamically creates and caches per-modality linear projections.
-
-### Stateful Latent Memory
-Give your AI temporal continuity ("object permanence") by feeding the previous latent state back into the next inference step.
-
 ### SafetyGuard (Formal Verification)
-Wraps any neural head with hard mathematical constraints that **cannot be overridden by the neural network**.
+Wraps any neural head with hard mathematical convex constraints that **cannot be overridden by the neural network**.
 
 ---
 
 ## Model Bundles (`.omni` format)
 OmniTrain uses a standardized `.omni` bundle for shipping trained AI "brains", containing model state, architecture metadata, and versioning information.
-
----
-
-## Sensor Plugins & ROS 2
-OmniTrain can ingest any data stream into the C++ bus via the `ModalityPlugin` system or the native `ROS2ModalityPlugin`.
 
 ---
 
@@ -113,12 +126,14 @@ python -m omnitrain.test_industrialization
 ---
 
 ## CLI Reference
-- `omni init`: Generate a new project.
-- `omni run <config.yaml>`: Launch training.
-- `omni bus`: Monitor live sensor data.
-- `omni inspect <model.omni>`: Display model metadata.
-- `omni deploy <model>`: Prepare for edge deployment.
-- `omni verify <model.omni>`: Run formal safety verification.
+Interactive Claude-style REPL commands:
+- `/init`: Scaffold a new project interactively.
+- `/train <config.yaml>`: Train the BioLiquid Neural Network.
+- `/run <config.yaml>`: Launch real-time inference pipeline.
+- `/bus`: Monitor live TokenBus sensor data.
+- `/status`: Check system health and hardware availability.
+- `/deploy <model>`: Prepare for edge deployment (ONNX export).
+- `/test <model.omni>`: Run formal safety verification.
 
 ---
 

@@ -67,7 +67,7 @@ def print_dashboard():
 
     left_content = Align.center(
         f"[bold color(117)]{mascot}[/]\n"
-        f"[bold white]OMNITRAIN v1.0.0[/]\n"
+        f"[bold white]OMNITRAIN v1.1.0 (BioLiquid)[/]\n"
         f"[dim]Project: [white]{project_name}[/]\n"
         "[dim]Safety: [green]Active[/]",
         vertical="middle"
@@ -128,9 +128,15 @@ def handle_init(args):
         "project": name,
         "template": type_choice,
         "model": {
-            "d_model": d_model,
-            "n_latents": n_latents,
-            "num_layers": 3
+            "n_latents": 64,
+            "d_model": 512,
+            "num_layers": 3,
+            "continual_learning": True,
+            "hub": {
+                "perception": {"sensory": 16, "inter": 32, "command": 12, "motor": 512},
+                "pilot": {"sensory": 8, "inter": 16, "command": 8, "motor": 512, "inputs_from": ["perception"]},
+                "safety": {"sensory": 4, "inter": 8, "command": 4, "motor": 512, "inputs_from": ["pilot"]}
+            }
         },
         "inputs": [
             {"id": "sensor_primary", "plugin": "plugins_real.CSVModalityPlugin", "hz": 10, "csv_path": "data/sample_sensor.csv"}
@@ -413,7 +419,7 @@ def handle_help(args):
     table.add_row("/audit", "Verify environment industrialization")
     table.add_row("/config", "Interactive YAML configuration editor")
     table.add_row("/record <config>", "Record TokenBus data to CSV")
-    table.add_row("/train <config>", "Train a Liquid Neural Network (3-phase Curriculum)")
+    table.add_row("/train <config>", "Train a BioLiquid Neural Network (3-phase Curriculum)")
     table.add_row("/run <config>", "Launch real-time inference pipeline")
     table.add_row("/bus <session>", "Monitor live bus (default: omni_default)")
     table.add_row("/inspect <model>", "View model architecture")
