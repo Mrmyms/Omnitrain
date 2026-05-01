@@ -13,7 +13,7 @@ setup(
     name="omnitrain",
     version="1.0.0",
     ext_modules=ext_modules,
-    install_requires=["numpy", "torch", "rich", "pyyaml"],
+    install_requires=["numpy", "torch", "rich", "pyyaml", "prompt_toolkit>=3.0"],
     entry_points={
         'console_scripts': [
             'omni=omnitrain.cli:main',

@@ -29,6 +29,17 @@ def main():
         model_path = sys.argv[1]
         
     try:
+        if not os.path.exists(model_path):
+            console.print(Panel(
+                f"[bold red]ERROR:[/bold red] Model file [yellow]{model_path}[/yellow] not found.\n\n"
+                "To use this interactive brain, you first need to train a model.\n"
+                "Try running the main CLI to initialize and train a project:\n\n"
+                "  [bold cyan]omni[/bold cyan] -> then use [bold]/init[/bold] and [bold]/train[/bold]",
+                title="Model Missing",
+                border_style="red"
+            ))
+            return
+
         with console.status(f"[bold green]Loading brain file {model_path}..."):
             core, heads, meta = OmniExporter().load_as_inference(model_path)
             # Rebuild shield
