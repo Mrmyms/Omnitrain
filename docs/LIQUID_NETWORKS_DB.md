@@ -1,4 +1,4 @@
-# Database: Liquid Neural Networks (LNN) 🧠💧
+# Database: Liquid Neural Networks (LNN)
 
 Este documento centraliza la investigación, especificaciones técnicas y fuentes oficiales de las Redes Neuronales Líquidas (LNN) y sus evoluciones (CfC), desarrolladas por el **MIT CSAIL**.
 

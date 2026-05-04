@@ -71,7 +71,7 @@ def handle_train(args):
             # Simple ASCII Sparkline logic
             def get_spark(val):
                 idx = min(7, int(val * 10))
-                return " ▂▃▄▅▆▇█"[idx]
+                return "........"[idx]
 
             table = Table(box=box.SIMPLE, expand=True)
             table.add_column("Neural Path", style="cyan")
@@ -98,7 +98,7 @@ def handle_train(args):
             layout["footer"].update(Panel(footer_text, border_style="dim"))
 
 
-    console.print(f"[bold green]✔ TRAINING COMPLETE[/bold green]. Model saved.")
+    console.print(f"[bold green]OK: TRAINING COMPLETE[/bold green]. Model saved.\n")
 
 def handle_diagnose(args):
     model_path = args[0] if args else None
@@ -155,7 +155,7 @@ def handle_prune(args):
     out_path = model_path.replace(".omni", "_pruned.omni")
     exporter.save(core, heads, config, out_path)
     
-    console.print(f"\n[bold green]✔ SYNAPTIC CONSOLIDATION COMPLETE[/bold green]")
+    console.print(f"\n[bold green]OK: SYNAPTIC CONSOLIDATION COMPLETE[/bold green]")
     console.print(f"  Sparsity: [white]{stats['overall_sparsity']*100:.1f}%[/] noisy connections eliminated.")
     console.print(f"  Saved to: [white]{out_path}[/white]")
 
@@ -197,7 +197,7 @@ def handle_init(args):
         with open("robot_logs.csv", "w") as f:
             f.write("timestamp,lidar,camera,action_0,action_1\n")
     
-    console.print("[bold green]✔ PROJECT INITIALIZED[/bold green]")
+    console.print("[bold green]OK: PROJECT INITIALIZED[/bold green]")
     console.print(f"  Created: [white]{config_path}[/], [white]robot_logs.csv[/]")
 
 def handle_record(args):
@@ -242,7 +242,7 @@ def handle_deploy(args):
         core, heads, config = exporter.load_as_inference(model_path)
         exporter.export_to_onnx(core, heads, out_onnx)
     
-    console.print(f"[bold green]✔ DEPLOYMENT PACKAGE READY[/bold green]")
+    console.print(f"[bold green]OK: DEPLOYMENT PACKAGE READY[/bold green]")
     console.print(f"  Artifact: [white]{out_onnx}[/]")
     console.print(f"  Target: [cyan]OmniEngine C++ / TensorRT[/]")
 
@@ -294,7 +294,7 @@ def handle_bus(args):
                 for m_id, info in stats.items():
                     d = info['data']
                     v_range = f"{np.min(d):.2f} / {np.max(d):.2f}"
-                    activity = "▇" * min(10, info['cnt'])
+                    activity = "#" * min(10, info['cnt'])
                     table.add_row(m_id, str(len(d)), f"[magenta]{activity}[/]", v_range)
 
                 live.update(table)
@@ -354,7 +354,7 @@ def handle_godmode(args):
             
     # Real checks
     handle_status([])
-    console.print("\n[bold green]✔ SYSTEM STATUS: SUPREME[/bold green]")
+    console.print("\n[bold green]OK: SYSTEM STATUS: SUPREME[/bold green]")
     console.print("[white]All synaptic pathways are clear. Training pipeline at 100% fidelity.[/]\n")
 
 

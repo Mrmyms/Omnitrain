@@ -16,13 +16,13 @@ def quantize_omnitrain_mixed(input_model="omni_1_0_edge.onnx", output_model="omn
     """
 
     if not os.path.exists(input_model):
-        print(f"❌ Error: Base model not found: {input_model}")
+        print(f"ERROR: Base model not found: {input_model}")
         return
 
-    print(f"💎 Starting Mixed-Precision Quantization on {input_model} (Target: {target})...")
+    print(f"INFO: Starting Mixed-Precision Quantization on {input_model} (Target: {target})...")
 
     if target == 'jetson_nano_fp16':
-        print(f"⚠️  [JETSON NANO] Skipping INT8 quantization.")
+        print(f"WARNING: [JETSON NANO] Skipping INT8 quantization.")
         print(f"NVIDIA Jetson Nano (Maxwell GPU) does NOT have Tensor Cores and does not support hardware INT8.")
         print(f"To optimize for Jetson Nano, you must use TensorRT with FP16 precision.")
         print(f"Run the following command on your Jetson Nano to generate the optimized engine:")
@@ -69,11 +69,11 @@ def quantize_omnitrain_mixed(input_model="omni_1_0_edge.onnx", output_model="omn
         size_old = os.path.getsize(input_model) / 1e6
         size_new = os.path.getsize(output_model) / 1e6
 
-        print(f"✅ Quantization completed successfully.")
-        print(f"📊 Reduction: {size_old:.2f} MB → {size_new:.2f} MB ({(1 - size_new/size_old)*100:.1f}%)")
+        print(f"OK: Quantization completed successfully.")
+        print(f"INFO: Reduction: {size_old:.2f} MB -> {size_new:.2f} MB ({(1 - size_new/size_old)*100:.1f}%)")
 
     except Exception as e:
-        print(f"❌ Error during quantization: {e}")
+        print(f"ERROR during quantization: {e}")
 
 
 if __name__ == "__main__":

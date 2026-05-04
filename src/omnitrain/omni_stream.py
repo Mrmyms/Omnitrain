@@ -454,8 +454,8 @@ class OmniStream:
         
         # Vision embed check
         if modal_id == "vision_embed" and tensor.dim() == 4:
-            # ⚠️  CRITICAL DISCREPANCY DETECTED
-            print(f"⚠️  [OmniStream] DISCREPANCY: Received raw image for modality '{modal_id}'.")
+            # CRITICAL DISCREPANCY DETECTED
+            print(f"WARNING: [OmniStream] DISCREPANCY: Received raw image for modality '{modal_id}'.")
             print(f"   The model expects pre-compressed embeddings (128-dim) for this ID.")
             print(f"   Feeding raw pixels into a latent-trained head will cause severe DEGRADATION.")
 

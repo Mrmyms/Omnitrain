@@ -30,13 +30,13 @@ def apply_omni_pruning(model_path, pruning_ratio=0.3, output_path="omni_2_0_prun
     Removes entire output neurons from Linear layers to produce a genuinely
     smaller and faster model. Skips safety-critical layers per project rules.
     """
-    print(f"✂️  Starting Structured Pruning on {model_path} (ratio={pruning_ratio})...")
+    print(f"INFO: Starting Structured Pruning on {model_path} (ratio={pruning_ratio})...")
 
     # 1. Load the original model
     try:
         core, heads, config = OmniExporter().load_as_inference(model_path)
     except Exception as e:
-        print(f"❌ Error loading model for pruning: {e}")
+        print(f"ERROR loading model for pruning: {e}")
         return
 
     # Put model in train mode for pruning operations
@@ -51,17 +51,17 @@ def apply_omni_pruning(model_path, pruning_ratio=0.3, output_path="omni_2_0_prun
         if isinstance(module, nn.Linear):
             # Safety Rule: Never prune safety-critical layers
             if 'safety' in name.lower():
-                print(f"   ⛔ Skipping safety-critical layer: {name}")
+                print(f"   SKIP: safety-critical layer: {name}")
                 layers_skipped += 1
                 continue
 
             # Skip the final projection layers of attention (would break architecture)
             if 'cross_attn' in name or 'out_proj' in name:
-                print(f"   ⏭  Skipping attention layer: {name}")
+                print(f"   SKIP: attention layer: {name}")
                 layers_skipped += 1
                 continue
 
-            print(f"   ✂️  Pruning layer: {name} ({module.in_features} → {module.out_features})")
+            print(f"   PRUNE: layer: {name} ({module.in_features} -> {module.out_features})")
 
             # Ln Structured Pruning on dim=0 (output neurons)
             # This zeros entire rows based on L1 norm magnitude
@@ -85,7 +85,7 @@ def apply_omni_pruning(model_path, pruning_ratio=0.3, output_path="omni_2_0_prun
             setattr(parent, child_name, new_layer)
             layers_pruned += 1
 
-    print(f"\n   📊 Layers pruned: {layers_pruned} | Layers skipped: {layers_skipped}")
+    print(f"\n   STATS: Layers pruned: {layers_pruned} | Layers skipped: {layers_skipped}")
 
     # 3. Count parameters before/after
     params_before = sum(p.numel() for p in core.parameters())

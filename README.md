@@ -7,7 +7,7 @@ OmniTrain is a production-grade framework for building **Bio-Inspired Conectomas
 
 ---
 
-## 🚀 What's New in v2.1 (Industrial Update)
+## What's New in v2.1 (Industrial Update)
 
 - **Training-Serving Parity**: Automatic capture and application of Z-Score normalization statistics. No more data degradation in deployment.
 - **Lagrangian Stability**: Stabilized primal-dual safety controller using per-sequence dual updates.
@@ -17,7 +17,7 @@ OmniTrain is a production-grade framework for building **Bio-Inspired Conectomas
 
 ---
 
-## ⚡ Quick Start
+## Quick Start
 
 ### 1. Installation
 ```bash
@@ -42,7 +42,7 @@ omni
 
 ---
 
-## 🛠️ CLI Reference (Slash Commands)
+## CLI Reference (Slash Commands)
 
 | Command | Description |
 | :--- | :--- |
@@ -59,7 +59,7 @@ omni
 
 ---
 
-## 🧠 Architecture: The Conectoma v2.1
+## Architecture: The Conectoma v2.1
 
 ```mermaid
 graph TD
@@ -77,7 +77,7 @@ graph TD
 
 ---
 
-## 📚 Resources
+## Resources
 
 *   **[Technical Deep Dive](docs/DETAILS.md)**: CfC cells and ICNN barriers.
 *   **[Theoretical Frameworks](docs/THEORETICAL_FRAMEWORKS.md)**: Liquid Networks, ICNNs, and CTMT math.

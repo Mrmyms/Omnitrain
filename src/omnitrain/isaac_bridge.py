@@ -77,7 +77,7 @@ class IsaacOmniBridge:
 
     def run_bridge(self, hz=30):
         """High-frequency sensor-actuator loop."""
-        print(f"🚀 Bridge Active: RTX 5070 Hardware Accelerated Mode @ {hz}Hz")
+        print(f"INFO: Bridge Active: RTX 5070 Hardware Accelerated Mode @ {hz}Hz")
         
         self.world.reset()
         dt_target = 1.0 / hz

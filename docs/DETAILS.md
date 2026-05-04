@@ -1,4 +1,4 @@
-# OmniTrain — Technical Deep Dive 
+# OmniTrain - Technical Deep Dive 
 **Version 2.0.0 (Conectoma)**
 
 This document contains the detailed technical specifications for the Conectoma v2.0 architecture, focused on biological fidelity and sparse asynchronous fusion.
