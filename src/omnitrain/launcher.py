@@ -47,6 +47,14 @@ def parse_and_launch(yaml_path: str):
 
         try:
             mod_name, cls_name = plugin_path.rsplit('.', 1)
+            
+            # Security: Whitelist allowed plugin sources to prevent arbitrary code execution
+            allowed_prefixes = ['omnitrain.', 'plugins', 'plugins_real', 'plugins_ros2']
+            is_allowed = any(mod_name.startswith(p) for p in allowed_prefixes)
+            
+            if not is_allowed:
+                raise ImportError(f"Unauthorized plugin source: {mod_name}. Only plugins from {allowed_prefixes} are allowed.")
+
             plugin_class = getattr(importlib.import_module(mod_name), cls_name)
 
             kwargs = {k: v for k, v in input_cfg.items() if k not in ['modal_id', 'id', 'plugin', 'hz', 'frequency']}

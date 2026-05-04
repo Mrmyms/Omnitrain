@@ -1,56 +1,32 @@
 # OmniTrain — Technical Deep Dive 
-**Version 1.1.0 (BioLiquid)**
+**Version 2.0.0 (Conectoma)**
 
-This document contains the detailed technical specifications, architectural insights, and advanced usage guides for the OmniTrain framework.
+This document contains the detailed technical specifications for the Conectoma v2.0 architecture, focused on biological fidelity and sparse asynchronous fusion.
 
 ---
 
-## Full Architecture
+## Full Architecture: The Hub & Wall
 
-OmniTrain uses a modular, transport-agnostic architecture designed for high-frequency sensor fusion and dynamic physical adaptation.
+OmniTrain v2.0 transitions from a dense transformer-style latent bus to a structured, brain-inspired "Hub & Wall" hierarchy.
 
 ```mermaid
 graph TD
-    S1[ Lidar Plugin] -->|C++ Publish| TB[(TokenBus<br>C++ SharedMemory<br>100,000Hz+)]
-    S2[ Camera Plugin] -->|C++ Publish| TB
-    S3[ IMU Plugin] -->|C++ Publish| TB
+    S1[ Modality A] -->|Asynchronous| H[BioConectomaHub]
+    S2[ Modality B] -->|Asynchronous| H
+    S3[ Modality C] -->|Asynchronous| H
 
-    TB -->|Sub-ms Snapshot| AIP[AdaptiveInputProjector<br>Auto-Modality]
-    AIP -->|Unified Tokens| FC[LiquidFusionCore<br>Spatial Fusion]
-    
-    FC -->|Global Latent Bus| OBH[OmniBrain Hub<br>Modular Neural Circuit]
-    
-    subgraph "NCP: Perception Organ"
-        P1[BioLiquidCell<br>LTC + CfC]
+    subgraph "Bio-Conectoma Core"
+        H -->|Sparse Sensory Mask| W[Interneuron Wall]
+        W -->|Sparse Recurrence| W
+        W -->|Sparse Decision Mask| C[Command Layer]
+        C -->|Recurrent| C
     end
     
-    subgraph "NCP: Pilot Organ"
-        P2[BioLiquidCell<br>Continual Learning]
-    end
-    
-    subgraph "NCP: Safety Organ"
-        P3[BioLiquidCell<br>Hebbian Plasticity]
-    end
-    
-    OBH --> P1
-    OBH --> P2
-    P1 --> P2
-    P2 --> P3
-    
-    P3 --> OH[Output Heads]
+    C -->|Output Latents| OH[Output Heads]
     OH --> SG[OmniShield v2<br>ICNN Formal Verification]
     
     SG -->|Safe| ACT[Action Output]
     SG -->|Violation| EMR[Emergency Override]
-    
-    subgraph "OmniTrain v1.1.0"
-        TB
-        AIP
-        FC
-        OBH
-        OH
-        SG
-    end
 ```
 
 ---

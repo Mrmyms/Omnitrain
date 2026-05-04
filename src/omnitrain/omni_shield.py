@@ -26,51 +26,64 @@ class ShieldTelemetry:
 class NeuralBarrier(nn.Module):
     """
     Learned Control Barrier Function (ICNN implementation).
-    
+
     Guarantees that h(x) is convex with respect to x by:
-    1. Using non-negative weights for all layers except the first.
+    1. Soft-parameterizing ICNN weights via softplus(θ): positivity is
+       guaranteed BY CONSTRUCTION at every forward pass, eliminating the
+       risk of 'dead neurons' caused by post-optimizer hard clamping.
     2. Using convex, non-decreasing activation functions (Softplus).
-    3. Adding pass-through connections from input to each layer.
+    3. Adding pass-through (skip) connections from input to each layer.
+
+    Fix applied (v2.1):
+      - Replaced `y1_w` / `y2_w` hard-clamped layers with `y1_raw` / `y2_raw`
+        raw parameter layers. In forward(), weights are projected via
+        F.softplus() before being applied, so they are always > 0.
+      - `_ensure_icnn_constraints()` is now a no-op (kept for API compat).
     """
 
     def __init__(self, state_dim: int, hidden: int = 64):
         super().__init__()
         self.state_dim = state_dim
-        
-        # Layer 0: Initial projection
-        self.w0 = nn.Linear(state_dim, hidden)
-        
-        # Layer 1: ICNN step
-        self.y1_w = nn.Linear(hidden, hidden, bias=True)  # Must be non-negative
-        self.x1_w = nn.Linear(state_dim, hidden, bias=False)
-        
-        # Final Layer
-        self.y2_w = nn.Linear(hidden, 1, bias=True)  # Must be non-negative
-        self.x2_w = nn.Linear(state_dim, 1, bias=False)
-        
+
+        # Layer 0: Initial projection (unconstrained)
+        self.w0    = nn.Linear(state_dim, hidden)
+
+        # Layer 1: ICNN step — raw params, positivity enforced in forward()
+        self.y1_raw = nn.Linear(hidden, hidden, bias=True)
+        self.x1_w   = nn.Linear(state_dim, hidden, bias=False)
+
+        # Final Layer — raw params, positivity enforced in forward()
+        self.y2_raw = nn.Linear(hidden, 1, bias=True)
+        self.x2_w   = nn.Linear(state_dim, 1, bias=False)
+
+        # Softplus for convex activations (high beta ≈ ReLU but smooth)
         self.softplus = nn.Softplus(beta=5)
-        
-        # Initialize weights to be positive
+
+        # Initialize raw weights in a range where softplus(w) ≈ 0.1~0.5
+        # softplus(x) ≈ x for x >> 0, so init near small positives is fine.
         with torch.no_grad():
-            nn.init.uniform_(self.y1_w.weight, 0.01, 0.5)
-            nn.init.uniform_(self.y2_w.weight, 0.01, 0.5)
+            nn.init.uniform_(self.y1_raw.weight, -0.5, 0.5)
+            nn.init.uniform_(self.y2_raw.weight, -0.5, 0.5)
+
+    def _ensure_icnn_constraints(self):
+        """No-op: positivity is now guaranteed by construction in forward().
+        Kept for backwards API compatibility with OmniExporter / trainer."""
+        pass
 
     def forward(self, state: torch.Tensor) -> torch.Tensor:
         """
-        ICNN Forward Pass.
+        ICNN Forward Pass with soft-parameterized non-negative weights.
+        The effective weights w = softplus(raw_w) are always > 0,
+        ensuring convexity at every evaluation without any gradient interference.
         """
-        # Ensure non-negativity of relevant weights during forward
-        # (Alternatively, can use constraints/clipping during training)
-        with torch.no_grad():
-            self.y1_w.weight.clamp_(min=0)
-            self.y2_w.weight.clamp_(min=0)
-            
+        # Project raw params to non-negative space at runtime
+        w1 = F.softplus(self.y1_raw.weight)  # (hidden, hidden) — always > 0
+        w2 = F.softplus(self.y2_raw.weight)  # (1, hidden)      — always > 0
+
         z1 = self.softplus(self.w0(state))
-        
-        z2 = self.softplus(self.y1_w(z1) + self.x1_w(state))
-        
-        h = self.y2_w(z2) + self.x2_w(state)
-        
+        z2 = self.softplus(F.linear(z1, w1, self.y1_raw.bias) + self.x1_w(state))
+        h  = F.linear(z2, w2, self.y2_raw.bias) + self.x2_w(state)
+
         return h.squeeze(-1)
 
 
@@ -239,9 +252,10 @@ class OmniShieldGuard(nn.Module):
                 action_dim = h.get('output_dim', 2)
                 break
 
-        # Infer state_dim from input sensors
-        inputs = config.get('inputs', [])
-        state_dim = max(len(inputs), 4)  # At least 4 for reasonable state space
+        # Extract state_dim from config to preserve physical meaning
+        model_cfg = config.get('model', {})
+        shield_cfg = config.get('shield', {})
+        state_dim = shield_cfg.get('state_dim', model_cfg.get('state_dim', 16))
 
         num_hw = len(constraints)
 
@@ -333,25 +347,45 @@ class OmniShieldGuard(nn.Module):
                 lg_h = torch.autograd.grad(h_next_var.sum(), u_var)[0]
 
         # Analytical QP projection onto the safe half-space
-        lg_h_norm_sq = (lg_h * lg_h).sum(dim=1, keepdim=True) + 1e-8
-        lam = F.relu(cbf_violation).unsqueeze(-1) / lg_h_norm_sq  # (Batch, 1)
+        # FIX: Added eps and check for zero-gradient to prevent NaN explosion
+        lg_h_norm_sq = (lg_h * lg_h).sum(dim=1, keepdim=True)
+        
+        # If the gradient is zero, the action cannot affect safety. 
+        # We use a safe mask to avoid division by zero.
+        safe_gradient_mask = (lg_h_norm_sq > 1e-12).float()
+        lam = F.relu(cbf_violation).unsqueeze(-1) / (lg_h_norm_sq + 1e-12)
+        lam = lam * safe_gradient_mask  # Zero out lam if gradient is too small
 
         u_safe = u_nn + lam * lg_h  # Minimal correction
 
-        return u_safe, h_x
+        return u_safe, h_x.detach() if not u_nn.requires_grad else h_x
 
     # ─── Tier 3: Barrier Loss ────────────────────────────────────────
 
     def barrier_loss(self, h_x: torch.Tensor) -> torch.Tensor:
         """
-        Soft penalty that teaches the policy to stay inside the safe set.
+        Logarithmic Barrier Loss — teaches the policy to stay well inside
+        the safe set with exponentially increasing penalty near the boundary.
 
-        Uses a hinge-like loss: penalizes when h(x) is near or below zero.
-        The policy gradually learns to avoid the boundary entirely.
+        Fix applied (v2.1):
+          Old: relu(margin - h_x)  →  zero gradient when safely inside set.
+          New: -log(h(x))          →  always-on gradient that pushes away
+               from the boundary, preventing the policy from staying near
+               the edge of the safe region.
+
+        - When h(x) >> 0 (very safe): loss ≈ 0, minimal interference.
+        - When h(x) → 0 (edge):       loss → ∞, strong corrective signal.
+        - When h(x) < 0 (violated):   clipped to a large constant (50.0)
+          to avoid log(negative), ensuring numerical stability.
         """
-        # Penalize when barrier value is below a safety margin (0.1)
-        margin = 0.1
-        return self.barrier_loss_weight * F.relu(margin - h_x).mean()
+        eps = 1e-6
+        safe_mask = h_x > eps
+        log_barrier = torch.where(
+            safe_mask,
+            -torch.log(h_x.clamp(min=eps)),   # Smooth penalty inside safe set
+            torch.full_like(h_x, 50.0),        # Large constant if already violated
+        )
+        return self.barrier_loss_weight * log_barrier.mean()
 
     # ─── Unified Forward ─────────────────────────────────────────────
 

@@ -8,6 +8,15 @@ model:
   n_latents: 32       # Memory slots
   num_layers: 2       # Reasoning depth
   n_heads: 4          # Visual/Spatial focus heads
+  plasticity_rate: 0.001
+  visual_tokens: 64
+
+# Training Hyperparameters
+training:
+  epochs: 30
+  batch_size: 16
+  seq_len: 32
+  learning_rate: 0.002
 
 # Multimodal Inputs
 inputs:
@@ -15,14 +24,20 @@ inputs:
     type: "sensor"
     hz: 10
     dim: 32            # 32-beam 1D lidar
+    range: [0.0, 10.0]
+    chaos: true
   - id: "vision_embed"
     type: "vision"
     hz: 5
     dim: 128           # Pre-compressed ResNet embeddings
+    range: [-1.0, 1.0]
+    chaos: false
   - id: "battery_state"
     type: "boolean"
     hz: 1
     dim: 1
+    range: [0.0, 1.0]
+    chaos: false
 
 # Industrial Task Heads
 heads:

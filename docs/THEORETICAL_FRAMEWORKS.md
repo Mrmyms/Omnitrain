@@ -1,34 +1,30 @@
 # OmniTrain: Theoretical Foundations & Architectural White Paper
-**Version 1.1.0** | **Industrial Robotics & Autonomous Systems**
+**Version 2.0.0** | **Conectoma Specification**
 *Authored by the OmniTrain Research Group*
 
 ---
 
 ## Abstract
-This document serves as the formal theoretical specification for the OmniTrain framework. We propose a unified architecture that bridges the gap between high-frequency stochastic sensor data and provably safe actuation. By synthesizing **Closed-form Continuous-time (CfC)** neural dynamics with **Liquid Time-constant (LTC)** bio-physical constraints, **Hebbian Plasticity**, and **Multi-Brain Hubs**, OmniTrain achieves sub-millisecond latency, self-adaptation, and formal robustness in Out-Of-Distribution (OOD) environments.
+This document serves as the formal theoretical specification for the OmniTrain Conectoma architecture. We propose a unified, brain-inspired hierarchy that bridges the gap between high-frequency stochastic sensor data and provably safe actuation. By synthesizing **Closed-form Continuous-time (CfC)** neural dynamics with **Sparse Neural Circuit Policies (NCPs)** and **Bio-Conectoma Hubs**, OmniTrain achieves sub-millisecond latency, self-adaptation, and formal robustness in Out-Of-Distribution (OOD) environments.
 
-> **Implementation Status (v1.1.1):** All theoretical frameworks described in this document, including the mathematically rigorous ICNN Control Barriers, Hebbian Plasticity, and the newly verified Continuous Temporal Encoding (CTE), are now **100% fully implemented and functional** within the `src/omnitrain/` codebase.
+> **Implementation Status (v2.0.0):** The **Hub & Wall** hierarchy, **Isolated Sensory Modalities**, and **True Synaptic Sparsity (NCP Wiring)** are now 100% fully implemented and verified via Supreme Audit.
 
 ---
 
-## 1. Temporal Dynamics: BioLiquid Networks & Multi-Brain Hub
-The core of OmniTrain’s reasoning engine is built upon the synthesis of **Liquid Time-constant (LTC)** bio-physical constraints and **Closed-form Continuous-time (CfC)** efficiency, deployed within a **Multi-Brain Hub** architecture.
+## 1. The Bio-Conectoma: Hub & Wall Hierarchy
+OmniTrain v2.0 transitions from modular hubs to a structured "Conectoma" inspired by the neural architecture of *C. elegans*.
 
-### 1.1 The BioLiquidCell (LTC + CfC Hybrid)
-Traditional recurrent architectures (LSTMs, GRUs) operate on discrete time-steps, failing to capture the continuous physics of robotic motion. Standard Liquid Networks solve this via Ordinary Differential Equations (ODEs), but suffer from high computational costs during numerical integration.
-We implement the `BioLiquidCell`, which fuses the best of both worlds:
-1.  **Affine Sensory Mapping**: Inputs are dynamically scaled ($x \cdot W_{sensory} + b_{sensory}$) to filter high-frequency sensor noise.
-2.  **Biological Positivity**: Time-constants ($C_m$, $G_{leak}$) are strictly bound to positive physical ranges using smooth projections ($\text{softplus}$) rather than gradient-killing hard limits.
-3.  **Closed-form Evolution**: The hidden state $h(t)$ is evolved without slow numerical loops:
-$$h(t) = \tilde{h}(x) \odot [1 - g(x) \cdot \sigma(-\Delta t (\tau_1 + \tau_2))] + h(t-1) \odot [g(x) \cdot \sigma(-\Delta t (\tau_1 + \tau_2))]$$
+### 1.1 Isolated Sensory Hubs
+Instead of a global projection, every sensor modality is processed by an isolated **BioLiquid** module. This prevents "Information Pollution", where high-frequency noise from one sensor (e.g., IMU) could corrupt the latent representation of another (e.g., Lidar).
 
-### 1.2 Continual Learning (Hebbian Plasticity)
-OmniTrain breaks the barrier of "frozen weights" post-training. During live inference, the network dynamically rewires its synapses using **Oja's Rule** (a stable form of Hebbian Plasticity):
-$$W_{plastic}(t+1) = \gamma W_{plastic}(t) + \eta \left( x^T \otimes h(t) \right)$$
-This allows the robot to adapt to mechanical wear-and-tear or sensor drift *on the fly*, without requiring backpropagation or a GPU.
+### 1.2 The Interneuron Wall
+All sensory signals converge on a central recurrent "Wall". This layer uses **NCP-style Sparse Wiring**:
+1.  **Sensory -> Inter**: Sparse feedforward projections.
+2.  **Inter -> Inter**: Sparse recurrent connections (Wall dynamics).
+3.  **Inter -> Command**: Decision-making sparse layer.
 
-### 1.3 The OmniBrain Hub (Modular NCPs)
-Instead of a monolithic network, OmniTrain organizes 100-200 neurons into **Neural Circuit Policies (NCPs)**. These structured "organs" (e.g., Perception, Pilot, Safety) communicate through a Global Latent Bus. This multi-brain approach isolates errors and drastically improves the explainability of decisions.
+### 1.3 Synaptic Consolidation (True Sparsity)
+Unlike traditional "dropout" or simulated sparsity, OmniTrain v2.0 implements **Synaptic Consolidation** using physical weight pruning. The neural paths are physically severed in memory, reducing the parameter search space and ensuring that gradients only flow through biologically viable routes.
 
 ---
 

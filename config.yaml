@@ -1,13 +1,70 @@
-project: Alpha_Robot_Alpha
+# SafeDelivery-Bot Configuration
+project: "SafeDelivery_Robot"
+version: "2.1-INDUSTRIAL"
+
+
+# AI "Brain" Architecture
 model:
-  d_model: 512
-  n_latents: 64
-  num_layers: 3
+  d_model: 256        # Latent space depth
+  n_latents: 32       # Memory slots
+  num_layers: 2       # Reasoning depth
+  n_heads: 4          # Visual/Spatial focus heads
+  plasticity_rate: 0.001
+  visual_tokens: 64
+  conectoma:
+    enabled: true
+    sensory_n: 4       # Neurons per sensor module
+    wall_n: 32         # Central Interneuron Wall size
+    command_n: 16      # Decision layer size
+
+# Training Hyperparameters (Industrial v2.1)
+training:
+  epochs: 30
+  batch_size: 16
+  seq_len: 64         # Increased for better temporal context
+  learning_rate: 0.002
+  stateful: true      # Enable truncated BPTT state propagation
+  lagrangian:
+    enabled: true
+    init_lambda: 0.1
+    lr: 0.02
+    lambda_max: 20.0
+  industrial_logging: true
+
+
+# Multimodal Inputs
 inputs:
-- id: lidar_front
-  plugin: plugins.DummyLidarPlugin
-  hz: 20
-- id: label_stream
-  plugin: plugins_real.CSVModalityPlugin
-  hz: 1
-  csv_path: labels.csv
+  - id: "lidar_front"
+    type: "sensor"
+    hz: 10
+    dim: 32            # 32-beam 1D lidar
+    range: [0.0, 10.0] # Normalization range
+    chaos: true        # Susceptible to noise
+  - id: "vision_embed"
+    type: "vision"
+    hz: 5
+    dim: 128           # Pre-compressed ResNet embeddings
+  - id: "battery_state"
+    type: "boolean"
+    hz: 1
+    dim: 1
+    range: [0.0, 1.0]
+    chaos: false
+
+# Industrial Task Heads
+heads:
+  - id: "drive_control"
+    type: "regression"
+    output_dim: 2      # [Linear Velocity, Angular Velocity]
+  - id: "safety"
+    type: "classification"
+    num_classes: 2     # [SAFE, EMERGENCY]
+
+# Formal Safety Constraints
+safety_constraints:
+  - sensor: "lidar_front"
+    min: 0.15          # Emergency stop if obstacle < 15cm
+    max: 10.0
+  - sensor: "battery_state"
+    min: 0.0
+    max: 0.5           # Emergency if battery flag is active (1.0)

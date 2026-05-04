@@ -1,39 +1,36 @@
 #pragma once
-
 #include <onnxruntime_cxx_api.h>
 #include <vector>
 #include <string>
 #include <memory>
-#include <iostream>
 
 /**
- * @brief OmniEngine: Universal inference engine with dynamic hardware fallback.
- * Implements the "Ollama Effect" for hardware-agnostic deployment.
+ * OmniEngine: High-Performance Liquid Neural Inference.
  */
 class OmniEngine {
 public:
     explicit OmniEngine(const std::string& model_path);
-    ~OmniEngine() = default;
 
     /**
-     * @brief Execute a dynamic forward pass (inference).
-     * @param sensor_tokens Vector of sensor tokens [Batch, N, 512]
-     * @param timestamps Vector of timestamps [Batch, N, 1]
+     * Executes a single step of the Liquid Brain.
+     * @param sensor_tokens Input tokens projected from sensors (B, N, D)
+     * @param state_buffer  Persistent state buffer (updated in-place)
+     * @param dt            Time delta since last step
+     * @param abs_time      Accumulated absolute time (updated in-place)
+     * @return              The primary action vector (e.g., motor commands)
      */
-    void Forward(const std::vector<float>& sensor_tokens, 
-                 const std::vector<float>& timestamps,
-                 int64_t batch_size, 
-                 int64_t num_tokens);
+    std::vector<float> Step(const std::vector<float>& sensor_tokens, 
+                           std::vector<float>& state_buffer,
+                           float dt, 
+                           float& abs_time);
 
 private:
     void ConfigureExecutionProviders();
 
-    // ONNX Runtime Core Components
-    Ort::Env env_{ORT_LOGGING_LEVEL_WARNING, "OmniTrain_Engine"};
+    Ort::Env env_{ORT_LOGGING_LEVEL_WARNING, "OmniTrain"};
     Ort::SessionOptions session_options_;
     std::unique_ptr<Ort::Session> session_;
 
-    // Model Metadata
-    std::vector<const char*> input_names_ = {"sensor_tokens", "timestamps"};
-    std::vector<const char*> output_names_ = {"motor_control", "safety_flag"};
+    std::vector<const char*> input_names_;
+    std::vector<const char*> output_names_;
 };

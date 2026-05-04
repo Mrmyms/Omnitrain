@@ -1,13 +1,23 @@
-# OmniTrain 1.0.0: Liquid Intelligence
-### Industrial Liquid Neural Networks & Formal Safety for Robotics
+# OmniTrain v2.1.0: Conectoma Industrial
+### Bio-Inspired Sparse Neural Circuits & Formal Safety for Industrial Robotics
 
 ---
 
-OmniTrain is a state-of-the-art framework for building **Liquid Neural Networks (CfC)** and **Input Convex Neural Networks (ICNN)** for industrial robotics. It focuses on sub-millisecond latency, time-continuous reasoning, and provable safety.
+OmniTrain is a production-grade framework for building **Bio-Inspired Conectomas (Hub & Wall architecture)**. It utilizes Closed-form Continuous-time (CfC) networks and Input Convex Neural Networks (ICNN) to provide sub-millisecond, provably safe robotic control on edge hardware (Jetson/Qualcomm).
 
 ---
 
-## Quick Start
+## 🚀 What's New in v2.1 (Industrial Update)
+
+- **Training-Serving Parity**: Automatic capture and application of Z-Score normalization statistics. No more data degradation in deployment.
+- **Lagrangian Stability**: Stabilized primal-dual safety controller using per-sequence dual updates.
+- **Unified Fusion**: Optimized multi-sensor ingestion in `OmniStream` to prevent neural double-evolution.
+- **Kernel Robustness**: Enhanced CLI with kernel-level exception handling for 24/7 mission-critical operation.
+- **Hardware Failsafes**: Improved Tier 1 monitoring with worst-case coverage across all sensor dimensions.
+
+---
+
+## ⚡ Quick Start
 
 ### 1. Installation
 ```bash
@@ -19,77 +29,60 @@ chmod +x setup.sh
 
 ### 2. Launch the Console
 ```bash
-# Using the 1omni alias (if configured during setup)
-1omni
-
-# Or use the global command
+# Enter the interactive Industrial Dashboard
 omni
 ```
 
-### 3. Universal Ingestion
-```python
-from omnitrain.omni_stream import OmniStream
-
-stream = OmniStream(core, shield)
-result = stream.send({"lidar": 1.5, "camera": "frame.jpg"})
-action = result['action'] # Safe action via OmniShield
+### 3. Initialize & Train
+```bash
+# Inside the omni console:
+> /init
+> /train
 ```
 
 ---
 
-## CLI Reference
-
-Launch the interactive dashboard with `omni` or `1omni`. Available slash commands:
+## 🛠️ CLI Reference (Slash Commands)
 
 | Command | Description |
 | :--- | :--- |
-| `/init` | Scaffold a new project interactively |
-| `/status` | Monitor system health and resources |
-| `/audit` | Verify environment industrialization |
-| `/config` | Interactive YAML configuration editor |
-| `/record` | Record TokenBus data to CSV |
-| `/train` | Train a BioLiquid Neural Network (3-phase Curriculum) |
-| `/run` | Launch real-time inference pipeline |
-| `/bus` | Monitor live TokenBus (IPC) |
-| `/inspect` | View model architecture and layers |
-| `/deploy` | Prepare for edge deployment (ONNX export) |
-| `/test` | Run formal safety and capability audits |
-| `/clear` | Clear the terminal |
+| `/init` | Scaffold a new project environment |
+| `/record` | Record live TokenBus telemetry to CSV |
+| `/train` | Stateful Lagrangian Training (3-Phase Curriculum) |
+| `/diagnose` | Run a Saliency Audit on sensory paths |
+| `/deploy` | Export to unified ONNX (Stripped Hooks) |
+| `/bus` | Monitor live multimodal IPC stream |
+| `/status` | Deep system health & SHM audit |
+| `/prune` | Synaptic Consolidation (Sparse Pruning) |
+| `/godmode` | Supreme Industrial Kernel Integrity Audit |
 | `/exit` | Exit the framework |
 
 ---
 
-## Core Pillars
-
-*   **Liquid Brain (CfC)**: Closed-form Continuous-time networks for extreme OOD robustness and temporal stability.
-*   **Continuous Temporal Encoding (CTE)**: Absolute arrival time projection into high-dimensional sinusoidal latent space for asynchronous sensor processing.
-*   **OmniShield (ICNN)**: Formal safety verification using Input Convex Neural Networks to guarantee safe operational boundaries.
-*   **Curriculum Scheduler**: Automated 3-Phase progression (Imitation, Safety, Chaos) seamlessly integrated into the training pipeline.
-*   **OmniStream**: Universal sensor ingestion that auto-detects and transforms any data type (Vision, Vector, Scalar).
-*   **TokenBus C++**: High-speed Shared Memory transport for sub-millisecond inter-process communication.
-
----
-
-## Architecture
+## 🧠 Architecture: The Conectoma v2.1
 
 ```mermaid
 graph TD
-    A[Universal Sensors] -->|OmniStream + CTE| B(LiquidFusionCore)
-    B -->|Latents| C{OmniShield v2}
-    C -->|Safe| D[Motor Command]
-    C -->|Danger| E[Emergency Stop / Projection]
-    style C fill:#f96,stroke:#333,stroke-width:2px
+    S1[Sensors] -->|Z-Score Normalization| H[BioConectomaHub]
+    subgraph "Hub & Wall"
+        H -->|Sparse Mask| W[Interneuron Wall]
+        W -->|Recurrent| W
+        W -->|Decision| C[Command Layer]
+    end
+    C -->|Safe Action| SG[OmniShield v2.1]
+    SG -->|Convex Barrier| M[Motor Output]
+    style H fill:#d1f2ff,stroke:#333
+    style W fill:#fff4d1,stroke:#333
 ```
 
 ---
 
-## Resources
+## 📚 Resources
 
 *   **[Technical Deep Dive](docs/DETAILS.md)**: CfC cells and ICNN barriers.
 *   **[Theoretical Frameworks](docs/THEORETICAL_FRAMEWORKS.md)**: Liquid Networks, ICNNs, and CTMT math.
-*   **[System Capabilities](docs/CAPABILITIES.md)**: Full feature specification and Capabilities Paper.
+*   **[Conectoma Spec](docs/CONECTOMA_SPEC.md)**: Official architecture specification.
 *   **[Training Pipeline](docs/TRAINING_PIPELINE.md)**: 3-phase curriculum (Imitation, Safety, Chaos).
-*   **[CLI Reference](docs/DETAILS.md#cli-reference)**: Management console usage.
 
 ---
 

@@ -1,46 +1,78 @@
-import time
-import numpy as np
-from .token_bus import TokenBus
+import threading
+import logging
+from typing import Callable, Any
 
-try:
-    import rclpy
-    from rclpy.node import Node
-    from std_msgs.msg import Float32MultiArray
-    ROS2_AVAILABLE = True
-except ImportError:
-    ROS2_AVAILABLE = False
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 
-class OmniROS2Bridge(Node):
+class OmniROS2Node:
     """
-    ROS 2 Bridge for emitting OmniTrain predictions back to the robotics ecosystem.
+    Singleton-pattern ROS2 Node wrapper for OmniTrain.
+    Ensures that rclpy is initialized exactly once per process and handles 
+    asynchronous spinning in a background thread to prevent deadlocks
+    with Python's multiprocessing.
     """
-    def __init__(self, session_id="omni_default", output_topic="/omni/predictions"):
-        super().__init__("omni_ros2_bridge")
-        self.publisher_ = self.create_publisher(Float32MultiArray, output_topic, 10)
-        self.bus = TokenBus(session_id=session_id, create=False)
-        self.timer = self.create_timer(0.01, self.timer_callback) # 100Hz emission
-        print(f"[OmniROS2] Bridge Active. Publishing to {output_topic}")
+    _instance = None
+    _lock = threading.Lock()
 
-    def timer_callback(self):
-        now = time.time()
-        tokens = self.bus.get_window(now - 0.1, now)
-        if not tokens: return
-        msg = Float32MultiArray()
-        msg.data = tokens[-1]['data'].tolist()
-        self.publisher_.publish(msg)
+    def __new__(cls):
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super(OmniROS2Node, cls).__new__(cls)
+                cls._instance._initialized = False
+            return cls._instance
 
-def main():
-    if not ROS2_AVAILABLE:
-        print("✘ ROS 2 (rclpy) not found.")
-        return
-    rclpy.init()
-    bridge = OmniROS2Bridge()
-    try:
-        rclpy.spin(bridge)
-    except KeyboardInterrupt:
-        pass
-    bridge.destroy_node()
-    rclpy.shutdown()
+    def __init__(self):
+        if self._initialized:
+            return
 
-if __name__ == "__main__":
-    main()
+        try:
+            import rclpy
+            from rclpy.node import Node
+            self.rclpy = rclpy
+            self.NodeClass = Node
+        except ImportError:
+            raise ImportError("ROS2 (rclpy) is not installed. OmniROS2Node cannot start. "
+                              "Please source your ROS2 workspace or install the rclpy package.")
+
+        self.rclpy.init()
+        self.node = self.NodeClass('omnitrain_fusion_hub')
+        self.spin_thread = None
+        self.running = False
+        self._initialized = True
+        logging.info("🤖 ROS2 Node 'omnitrain_fusion_hub' initialized successfully.")
+
+    def start_spinning(self):
+        """Starts the ROS2 executor in a background thread."""
+        if self.running:
+            return
+
+        self.running = True
+        self.spin_thread = threading.Thread(target=self._spin_loop, daemon=True)
+        self.spin_thread.start()
+        logging.info("🤖 ROS2 Executor spinning up...")
+
+    def _spin_loop(self):
+        try:
+            self.rclpy.spin(self.node)
+        except Exception as e:
+            logging.error(f"ROS2 Spin Loop died: {e}")
+        finally:
+            self.running = False
+
+    def create_subscription(self, msg_type: Any, topic: str, callback: Callable, qos_profile: int = 10):
+        """Wrapper around node.create_subscription."""
+        return self.node.create_subscription(msg_type, topic, callback, qos_profile)
+
+    def shutdown(self):
+        """Gracefully shuts down the ROS2 context."""
+        if not self._initialized or not self.running:
+            return
+
+        self.running = False
+        self.node.destroy_node()
+        self.rclpy.shutdown()
+        
+        if self.spin_thread:
+            self.spin_thread.join(timeout=2.0)
+            
+        logging.info("🤖 ROS2 Node shut down cleanly.")

@@ -1,67 +1,43 @@
-# Pipeline de Entrenamiento Industrial: Redes Neuronales Líquidas (CfC)
+# Pipeline de Entrenamiento Industrial: Conectoma v2.1 (Industrial)
 
-Este documento define la metodología oficial recomendada para entrenar sistemas robóticos autónomos impulsados por **Liquid Neural Networks (LNN)** y arquitecturas **Closed-form Continuous-time (CfC)**. La metodología está diseñada para pasar de la simulación al mundo físico (Sim-to-Real) con garantías de seguridad matemática.
+Este documento define la metodología oficial recomendada para entrenar sistemas robóticos autónomos impulsados por **Liquid Neural Networks (LNN)** y arquitecturas **Closed-form Continuous-time (CfC)**. La metodología v2.1 introduce estabilidad de grado industrial para despliegues críticos.
 
 ---
 
-## Metodología de 5 Fases (Curriculum Pipeline)
+## Metodología de Entrenamiento (Industrial Curriculum)
 
-Entrenar una LNN requiere un enfoque radicalmente distinto al de un Transformer estático, ya que las derivadas fluyen a través del tiempo continuo ($\Delta t$). Este pipeline sigue los estándares establecidos por MIT CSAIL.
+Entrenar una LNN requiere un enfoque radicalmente distinto al de un Transformer estático, ya que las derivadas fluyen a través del tiempo continuo ($\Delta t$). Este pipeline integra estabilidad formal y paridad de datos.
 
-### Fase 1: Pre-entrenamiento Sensorial (Representation Learning)
-Antes de procesar dinámicas temporales, el sistema debe aprender a comprimir la realidad espacial.
-*   **Mecánica:** Se congelan las células líquidas (`CfCCell`). Se entrenan únicamente los proyectores (`CNNProjector` y auto-modality heads) utilizando técnicas de auto-codificación (Autoencoders) o aprendizaje contrastivo.
-*   **Objetivo:** Reducir la dimensionalidad de una imagen de cámara (ej. 1080p) o un barrido Lidar a un vector de latentes compacto sin perder información de profundidad.
-*   **Fundamento:** Las ecuaciones diferenciales operan mejor sobre espacios de estado compactos y densos, no sobre píxeles en crudo.
+### Fase 1: Pre-entrenamiento Sensorial y Paridad de Datos
+Antes de procesar dinámicas temporales, el sistema debe aprender a normalizar la realidad.
+*   **Captura de Estadísticas (v2.1):** Durante la carga del dataset (`OmniLogDataset`), el sistema captura automáticamente la media y desviación estándar de cada sensor.
+*   **Importancia:** Estas estadísticas se guardan en el bundle `.omni`. Sin ellas, el robot sufriría de "degradación de datos" al recibir valores crudos en tiempo real que no coinciden con la distribución de entrenamiento.
 
-### Fase 2: Clonación en Bucle Abierto (Behavioral Cloning con BPTT)
+### Fase 2: Clonación de Comportamiento (Stateful BPTT)
 Enseñanza de los reflejos motores base mediante demostraciones humanas.
-*   **Mecánica:** Se graban trayectorias expertas (humanos operando el robot en Isaac Sim o hardware físico). El modelo se entrena usando **Backpropagation Through Time (BPTT)** sobre ventanas de secuencia de tiempo. 
-*   **Requisito Técnico:** Es **crítico** inyectar el tensor de $\Delta t$ exacto en cada paso de inferencia, ya que las celdas líquidas usan el tiempo como variable de compuerta.
-*   **Objetivo:** El robot aprende a predecir la acción humana ideal dados los sensores.
+*   **Mecánica:** El entrenamiento es **Stateful**. El estado latente del cerebro se propaga entre secuencias contiguas de una trayectoria, permitiendo que el robot aprenda dependencias temporales de largo alcance (ej. recordar que pasó por una puerta hace 10 segundos).
 
-### Fase 3: Inyección de Caos (Curriculum & Domain Randomization)
-La ventaja principal de las LNN es su resiliencia natural a condiciones fuera de distribución (Out-of-Distribution - OOD). Esta fase fuerza el desarrollo de esa resiliencia.
-*   **Mecánica:** Se somete al modelo a un "Plan de Estudios" progresivo dentro del simulador gestionado formalmente por la clase `CurriculumScheduler`:
-    *   *Nivel 1 (Imitation):* Entorno ideal, penalización de escudo baja.
-    *   *Nivel 2 (Safety):* Aprendizaje estricto de restricciones CBF.
-    *   *Nivel 3 (Chaos - Domain Randomization):* Se apaga aleatoriamente el 10%-30% de los rayos Lidar y se inyecta ruido Gaussiano.
-*   **Objetivo:** Las neuronas líquidas aprenden a no depender de un sensor ruidoso, equilibrando internamente sus constantes de tiempo para mantener la inercia del movimiento.
+### Fase 3: Inyección de Caos (Domain Randomization)
+La ventaja principal de las LNN es su resiliencia natural a condiciones fuera de distribución (OOD).
+*   **Mecánica:** Se inyecta ruido gaussiano y fallos de sensores (dropout). 
+*   **Nota Técnica:** El ruido se aplica **después** de la normalización Z-Score pero **antes** del clamping de activación, permitiendo que la red aprenda a ignorar señales ruidosas sin saturarse.
 
-### Fase 4: Calibración de Seguridad y RL (Closed-Loop + CBF)
-Pulido final del modelo interactuando en tiempo real con el simulador y el escudo de seguridad.
-*   **Mecánica:** El robot se despliega en Isaac Sim usando Aprendizaje por Refuerzo (RL) como *Soft Actor-Critic*. Si la red neuronal propone una acción peligrosa, el **OmniShield** (Control Barrier Function) proyecta la acción a la zona segura.
-*   **Entrenamiento:** Se penaliza a la red (`Barrier Loss`) cuando obliga al escudo a intervenir. 
-*   **Objetivo:** Un robot que es agresivamente eficiente pero se auto-corrige fracciones de segundo antes de acercarse al límite físico de colisión.
+### Fase 4: Estabilidad Lagrangiana (Formal Safety)
+Pulido final del modelo con garantías de seguridad matemática.
+*   **Lagrangian Dual Update (v2.1):** Se utiliza un optimizador primal-dual para ajustar el peso de la seguridad. Las actualizaciones del multiplicador de Lagrange ($\lambda$) se realizan **por secuencia**, eliminando las oscilaciones violentas de versiones anteriores y logrando una política de seguridad mucho más estable.
+*   **OmniShield:** Si la red propone una acción peligrosa, el escudo (ICNN) proyecta la acción a la zona segura mediante una optimización de proyección cuadrática (QP).
 
-### Fase 5: Aprendizaje Continuo Post-Despliegue (Hebbian Plasticity)
-La verdadera revolución líquida ocurre *después* del entrenamiento, cuando el robot está operando en la fábrica.
-*   **Mecánica:** Los pesos entrenados se congelan, pero se activa una **Matriz de Plasticidad Dinámica** (`w_plastic`). Usando la **Regla de Oja** (plasticidad hebbiana), la red calcula la correlación entre lo que sienten los sensores y lo que deciden las neuronas en tiempo real.
-*   **Fundamento:** "Neuronas que se disparan juntas, se conectan". No requiere backpropagation ni GPU.
-*   **Objetivo:** Adaptación *Sim-to-Real* en vivo. Si un motor se desgasta o un sensor se ensucia, el robot re-cablea sus sinapsis instantáneamente para compensarlo, logrando una supervivencia mecánica sin re-entrenamiento.
+### Fase 5: Consolidación Sináptica (Structured Pruning)
+Optimización post-entrenamiento para hardware de bajo consumo (Edge Computing).
+*   **Mecánica:** Se eliminan las neuronas y conexiones más débiles de forma estructural. Esto reduce el tamaño del modelo hasta en un 60% y disminuye la latencia en dispositivos NVIDIA Jetson o Qualcomm.
 
 ---
 
 ## Referencias y Fuentes Oficiales (MIT)
 
-El pipeline detallado anteriormente se basa en metodologías comprobadas y publicadas por el grupo de Robótica e Inteligencia Artificial del MIT:
-
-1.  **Arquitectura CfC y Velocidad de Inferencia:**
-    *   *Paper:* "Closed-form continuous-time neural networks"
-    *   *Publicación:* Nature Machine Intelligence (2022).
-    *   *Autores:* Ramin Hasani, Mathias Lechner, Alexander Amini, Daniela Rus, et al.
-    *   *Relevancia:* Establece la base matemática para computar derivadas líquidas sin los lentos *ODE Solvers*, habilitando el entrenamiento BPTT rápido para la Fase 2.
-
-2.  **Robustez OOD y Navegación de Drones (Sim-to-Real):**
-    *   *Paper:* "Robust flight navigation out of distribution with liquid neural networks"
-    *   *Publicación:* Science Robotics (2023).
-    *   *Autores:* Makram Chahine, Ramin Hasani, et al.
-    *   *Relevancia:* Demuestra la efectividad de la Fase 3 (Domain Randomization), logrando que drones entrenados en ambientes limpios naveguen exitosamente en bosques densos sin re-entrenamiento.
-
-3.  **Concepto Original (LTC):**
-    *   *Paper:* "Liquid Time-Constant Networks"
-    *   *Publicación:* AAAI (2021).
-    *   *Relevancia:* Define la ecuación fundamental donde las constantes de tiempo y los retardos se adaptan a la entrada sensorial.
+1.  **Arquitectura CfC:** Nature Machine Intelligence (2022). Ramin Hasani, et al.
+2.  **Robustez OOD:** Science Robotics (2023). Makram Chahine, Ramin Hasani, et al.
+3.  **Seguridad Formal:** ICNN-based Control Barrier Functions (2021).
 
 ---
-*OmniTrain Project Documentation - 2026*
+*OmniTrain Project Documentation - 2026 (v2.1 Industrial)*

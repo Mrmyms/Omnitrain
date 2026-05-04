@@ -409,11 +409,15 @@ class OmniStream:
             return self._send_multi(data, dt_tensor, dt, hw_sensors)
 
         detected = self.detector.detect(data, modal_id)
+        
+        # ── 3. Runtime Normalization ──
+        # Fix: Apply Z-Score normalization if stats are available in core.config
+        norm_tensor = self._apply_normalization(detected.tensor, detected.modal_id)
 
-        # ── 3. Route through the core ──
+        # ── 4. Route through the core ──
         with torch.no_grad():
             latents = self.core(
-                detected.tensor,
+                norm_tensor,
                 dt_tensor,
                 modal_id=detected.modal_id,
                 prev_latents=self._prev_latents,
@@ -422,11 +426,40 @@ class OmniStream:
         self._prev_latents = latents.detach()
         self._step_count += 1
 
-        # ── 4. Safety enforcement ──
+        # ── 5. Safety enforcement ──
         result = self._apply_shield(latents, hw_sensors, dt)
 
         result['input'] = detected
         return result
+
+    def _apply_normalization(self, tensor: torch.Tensor, modal_id: str) -> torch.Tensor:
+        """Apply training-time Z-score normalization to real-time tensors."""
+        if not hasattr(self.core, 'config') or not self.core.config:
+            return tensor
+
+        inputs_cfg = self.core.config.get('inputs', [])
+        target_cfg = next((c for c in inputs_cfg if c['id'] == modal_id), None)
+
+        if target_cfg and 'norm_mean' in target_cfg and 'norm_std' in target_cfg:
+            mean = target_cfg['norm_mean']
+            std = target_cfg['norm_std']
+
+            # Handle both scalar and vector stats
+            mean_t = torch.tensor(mean, device=tensor.device).view(1, 1, -1)
+            std_t = torch.tensor(std, device=tensor.device).view(1, 1, -1)
+            
+            # Clip to ±5 sigma to match OmniLogDataset behavior
+            normalized = (tensor - mean_t) / std_t
+            return torch.clamp(normalized, -5.0, 5.0)
+        
+        # Vision embed check
+        if modal_id == "vision_embed" and tensor.dim() == 4:
+            # ⚠️  CRITICAL DISCREPANCY DETECTED
+            print(f"⚠️  [OmniStream] DISCREPANCY: Received raw image for modality '{modal_id}'.")
+            print(f"   The model expects pre-compressed embeddings (128-dim) for this ID.")
+            print(f"   Feeding raw pixels into a latent-trained head will cause severe DEGRADATION.")
+
+        return tensor
 
     def _send_multi(
         self,
@@ -442,17 +475,24 @@ class OmniStream:
         latents = self._prev_latents
         detected_list = []
 
+        # Fix: Unified Fusion. We collect all tensors and call the core ONCE.
+        # This prevents the 'double evolution' bug where the brain age increments
+        # multiple times per logical time step.
+        sensor_dict = {}
         for key, value in data_dict.items():
             detected = self.detector.detect(value, modal_id=key)
             detected_list.append(detected)
+            
+            # Fix: Apply Z-Score normalization for multi-sensor bundles
+            norm_tensor = self._apply_normalization(detected.tensor, detected.modal_id)
+            sensor_dict[detected.modal_id] = norm_tensor
 
-            with torch.no_grad():
-                latents = self.core(
-                    detected.tensor,
-                    dt_tensor,
-                    modal_id=detected.modal_id,
-                    prev_latents=latents,
-                )
+        with torch.no_grad():
+            latents = self.core(
+                sensor_dict,
+                dt_tensor,
+                prev_latents=latents,
+            )
 
         self._prev_latents = latents.detach()
         self._step_count += 1
