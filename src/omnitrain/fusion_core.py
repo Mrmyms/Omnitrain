@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-from typing import Optional, Dict, Tuple, List
+from typing import Optional, Dict, Tuple, List, Union
+import logging
 import torch.nn.utils.prune as prune
 
 
@@ -23,7 +24,6 @@ class CNNProjector(nn.Module):
             nn.AdaptiveAvgPool2d((grid_size, grid_size)) 
         )
         self.proj = nn.Linear(64, d_model)
-        # Learned spatial pooling for Conectoma path (replaces .mean(dim=1))
         self.spatial_pool = nn.Linear(visual_tokens * d_model, d_model)
 
     def forward(self, x):
@@ -79,7 +79,7 @@ class AdaptiveInputProjector(nn.Module):
 class ContinuousTemporalEncoding(nn.Module):
     """
     Projects the arrival time of a sensor pulse into a high-dimensional latent space 
-    using a sinusoidal basis, as promised in the theoretical specification.
+    using a sinusoidal basis.
     """
     def __init__(self, d_model: int):
         super().__init__()
@@ -88,13 +88,17 @@ class ContinuousTemporalEncoding(nn.Module):
         inv_freq = 1.0 / (10000 ** (torch.arange(0, d_model, 2).float() / d_model))
         self.register_buffer('inv_freq', inv_freq)
 
+        self.amplitude = nn.Parameter(torch.ones(d_model))
+        self.phase = nn.Parameter(torch.zeros(d_model // 2))
+
     def forward(self, t: torch.Tensor) -> torch.Tensor:
         # t shape: (Batch, 1) or (Batch,)
         if t.dim() == 1:
             t = t.unsqueeze(-1)
         sinusoid_inp = torch.einsum('bi,j->bij', t, self.inv_freq)
+        sinusoid_inp = sinusoid_inp + self.phase
         emb = torch.cat([sinusoid_inp.sin(), sinusoid_inp.cos()], dim=-1)
-        # emb shape: (Batch, 1, d_model)
+        emb = emb * self.amplitude
         return emb
 
 
@@ -104,7 +108,7 @@ class ContinuousTemporalEncoding(nn.Module):
 
 class SignalSpatialMixer(nn.Module):
     """
-    O(N) Complexity Spatial Fusion with Cumulative Recurrence (Godmode).
+    O(N) Complexity Spatial Fusion with Cumulative Recurrence.
     Replaces traditional O(N^2) Cross-Attention with a Linear Recurrent state.
     
     Mathematical Improvements:
@@ -118,6 +122,12 @@ class SignalSpatialMixer(nn.Module):
         self.k_proj = nn.Linear(d_model, d_model)
         self.v_proj = nn.Linear(d_model, d_model)
         self.gate = nn.Linear(d_model, d_model)
+        
+        # Zero-bias initialization for linear attention stability
+        nn.init.zeros_(self.q_proj.bias)
+        nn.init.zeros_(self.k_proj.bias)
+        nn.init.zeros_(self.v_proj.bias)
+        
         self.norm = nn.LayerNorm(d_model)
         
     def forward(self, latents: torch.Tensor, tokens: torch.Tensor, 
@@ -156,13 +166,18 @@ class SignalSpatialMixer(nn.Module):
         # numerator = Q @ S_curr -> (B, N_q, D)
         numerator = torch.bmm(Q, S_curr)
         # denominator = Q @ Z_curr -> (B, N_q, 1)
-        denominator = torch.bmm(Q, Z_curr) + 1e-6
+        denominator = torch.bmm(Q, Z_curr) + 1e-4
         
         fused = numerator / denominator
         
-        # 4. Neural Gating & Skip Connection
+        # Neural Gating & Skip Connection
         gate = torch.sigmoid(self.gate(fused))
-        out = self.norm(latents + (fused * gate))
+        
+        res = latents + (fused * gate)
+        if hasattr(torch.nn.functional, 'layer_norm'):
+            out = torch.nn.functional.layer_norm(res, self.norm.normalized_shape, self.norm.weight, self.norm.bias, self.norm.eps)
+        else:
+            out = self.norm(res)
         
         return out, (S_curr.detach() if not self.training else S_curr, 
                      Z_curr.detach() if not self.training else Z_curr)
@@ -170,7 +185,7 @@ class SignalSpatialMixer(nn.Module):
 
 
 # ─────────────────────────────────────────────────────────────────────
-#  LeCun Activation (Official CfC component)
+#  LeCun Activation
 # ─────────────────────────────────────────────────────────────────────
 
 class LeCun(nn.Module):
@@ -212,59 +227,94 @@ class BioLiquidCell(nn.Module):
         self.eta = eta
         self.backbone_units = backbone_units
         
-        # Affine Sensory Mapping (Official LTC feature)
+        # Affine Sensory Mapping
         self.sensory_w = nn.Parameter(torch.ones(input_size))
         self.sensory_b = nn.Parameter(torch.zeros(input_size))
         
-        # Shared Backbone MLP (Official CfC architecture)
-        layer_list = [
+        # 1. State Backbone: Learns Target States (ff1, ff2)
+        state_layers = [
             nn.Linear(input_size + hidden_size, backbone_units),
             LeCun(),
         ]
         for _ in range(1, backbone_layers):
-            layer_list.append(nn.Linear(backbone_units, backbone_units))
-            layer_list.append(LeCun())
-        self.backbone = nn.Sequential(*layer_list)
+            state_layers.append(nn.Linear(backbone_units, backbone_units))
+            state_layers.append(LeCun())
+        self.backbone_state = nn.Sequential(*state_layers)
 
-        # Two Target State Heads (Official CfC: ff1 and ff2)
+        # 2. Time Backbone: Learns the Temporal Gate
+        time_layers = [
+            nn.Linear(input_size + hidden_size, backbone_units // 2),
+            LeCun(),
+        ]
+        self.backbone_time = nn.Sequential(*time_layers)
+
+        # Two Target State Heads
         self.ff1 = nn.Linear(backbone_units, hidden_size)
         self.ff2 = nn.Linear(backbone_units, hidden_size)
         
-        # Learned Time Gate (Official CfC: σ(time_a · t + time_b))
-        self.time_a = nn.Linear(backbone_units, hidden_size)
-        self.time_b = nn.Linear(backbone_units, hidden_size)
+        # Learned Time Gate
+        self.time_a = nn.Linear(backbone_units // 2, hidden_size)
+        self.time_b = nn.Linear(backbone_units // 2, hidden_size)
+
+        # Per-hidden-unit time scale for heterogeneous temporal dynamics
+        self.time_scale = nn.Parameter(torch.ones(1, hidden_size))
 
         self.tanh = nn.Tanh()
         self.sigmoid = nn.Sigmoid()
         
-        # Pure mode parameters
         if self.mode == "pure":
-            self.w_tau = nn.Parameter(torch.zeros(1, hidden_size))
-            self.A = nn.Parameter(torch.ones(1, hidden_size))
+            self.w_tau = nn.Parameter(torch.ones(1, hidden_size))
         
+        # Persistent Pruning Mask
+        self.register_buffer('plastic_pruning_mask', torch.ones(1, backbone_units, hidden_size))
+
         # Dynamic state for continual learning
         self.w_plastic = None
         
-        # Xavier Initialization (as per official code)
+        # Xavier Initialization
         self._init_weights()
         
     def _init_weights(self):
-        for w in self.parameters():
+        for name, w in self.named_parameters():
             if w.dim() == 2 and w.requires_grad:
-                nn.init.xavier_uniform_(w)
+                if "w_tau" in name:
+                    nn.init.constant_(w, 1.0)
+                elif "time_a" in name:
+                    nn.init.normal_(w, std=0.01)
+                elif "time_b" in name:
+                    nn.init.constant_(w, 0.0)
+                else:
+                    nn.init.xavier_uniform_(w)
+            elif w.dim() == 1 and "time_b" in name:
+                # Initialize bias to 0 to prevent early saturation
+                nn.init.constant_(w, 0.0)
         
     def reset_plasticity(self):
-        self.w_plastic = None
+        if self.continual_learning and not hasattr(self, 'w_plastic'):
+            self.register_buffer('w_plastic', torch.zeros(1, self.backbone_units, self.hidden_size))
+        else:
+            if hasattr(self, 'w_plastic') and self.w_plastic is not None:
+                self.w_plastic.zero_()
 
     def forward(self, x: torch.Tensor, h_prev: torch.Tensor, dt: torch.Tensor) -> torch.Tensor:
         B = x.size(0)
         
         # 1. Affine Sensory Mapping
         x_mapped = x * self.sensory_w + self.sensory_b
-        x_in = torch.cat([x_mapped, h_prev], dim=-1)
         
-        # 2. Shared Backbone Feature Extraction
-        features = self.backbone(x_in)
+        if self.mode == "pure":
+            h_in = torch.zeros_like(h_prev)
+        else:
+            h_in = h_prev
+            
+        x_in = torch.cat([x_mapped, h_in], dim=-1)
+        
+        # 2. Decoupled Feature Extraction
+        b_state = self.backbone_state(x_in)
+        b_time  = self.backbone_time(x_in)
+        
+        # We use b_state as the primary feature representation for plasticity
+        features = b_state
         
         # --- Continual Learning (Hebbian Plasticity on backbone output) ---
         if self.continual_learning and not self.training:
@@ -272,42 +322,48 @@ class BioLiquidCell(nn.Module):
                 self.w_plastic = torch.zeros(
                     (B, self.backbone_units, self.hidden_size), device=x.device
                 )
-            # Apply plastic weights to backbone features
+            
+            # Compute plastic activation efficiently using baddbmm
             h_plastic = torch.bmm(features.unsqueeze(1), self.w_plastic).squeeze(1)
-            
-            # Oja's Rule: Δw = η(y·x - y²·w)
             y = self.tanh(self.ff1(features) + h_plastic)
-            y_sq = (y ** 2).unsqueeze(1)
-            w_decay = y_sq * self.w_plastic
-            dw_hebb = torch.bmm(features.unsqueeze(2), y.unsqueeze(1))
             
-            # Stabilization (Godmode): Ensure plasticity doesn't explode during OOD inputs
-            delta_w = self.eta * (dw_hebb - w_decay)
-            self.w_plastic = torch.clamp(self.w_plastic + delta_w, -1.0, 1.0)
+            # Autograd-safe Hebbian update
+            with torch.no_grad():
+                # Oja's Rule: Δw = η(x·y - y²·w)
+                dw_hebb = torch.bmm(features.detach().unsqueeze(2), y.detach().unsqueeze(1))
+                w_decay = (y.detach() ** 2).unsqueeze(1) * self.w_plastic
+                
+                delta_w = self.eta * (dw_hebb - w_decay)
+                delta_w = delta_w * self.plastic_pruning_mask
+                
+                self.w_plastic = (self.w_plastic + delta_w).clamp_(-1.0, 1.0)
 
-        else:
-            if self.training:
-                self.w_plastic = None
+        elif self.training:
+            self.w_plastic = None
         
         # Clamp dt for safety (prevents NaN on negative clock jitter)
         ts = torch.clamp(dt, min=0.0)
         
         # 3. Canonical CfC Mode Selection
+        
+        ts = ts * torch.abs(self.time_scale)
+
         if self.mode == "pure":
-            # Direct closed-form solution (Hasani et al. Eq. minimal)
-            ff1 = self.ff1(features)
-            new_hidden = (
-                -self.A
-                * torch.exp(-ts * (torch.abs(self.w_tau) + torch.abs(ff1)))
-                * ff1
-                + self.A
-            )
+            
+            # (Hasani et al. Eq. 10). Replaces simplified exponential decay
+            # with learned sigmoidal gate for full expressivity.
+            # Statelessness is preserved via h_in = zeros (line 303).
+            ff1 = self.ff1(b_state)
+            ff2 = self.ff2(b_state)
+            t_interp = self.sigmoid(self.time_a(b_time) * ts + self.time_b(b_time))
+            new_hidden = ff1 * (1.0 - t_interp) + t_interp * ff2
         else:
-            # Full CfC (Hasani et al. Eq. default)
-            ff1 = self.tanh(self.ff1(features))
-            ff2 = self.tanh(self.ff2(features))
-            # Stabilization (Godmode): Epsilon in time-gate to prevent division/overflow in ONNX
-            t_interp = self.sigmoid(self.time_a(features) * ts + self.time_b(features) + 1e-6)
+            # Full CfC
+            ff1 = self.tanh(self.ff1(b_state))
+            ff2 = self.tanh(self.ff2(b_state))
+            
+            # Sigmoid time-gate
+            t_interp = self.sigmoid(self.time_a(b_time) * ts + self.time_b(b_time))
             
             if self.mode == "no_gate":
                 new_hidden = ff1 + t_interp * ff2
@@ -326,11 +382,11 @@ class NCPBackbone(nn.Module):
     def __init__(self, input_dim: int, sensory: int = 12, inter: int = 20, command: int = 8, motor: int = 4, continual_learning: bool = False, eta: float = 0.001):
         super().__init__()
         self.dims = (sensory, inter, command, motor)
-        
-        self.sensory_layer = nn.Linear(input_dim, sensory)
+        self.motor_layer = nn.Linear(command, motor)
         self.inter_cell = BioLiquidCell(sensory, inter, continual_learning=continual_learning, eta=eta)
         self.command_cell = BioLiquidCell(inter, command, continual_learning=continual_learning, eta=eta)
-        self.motor_layer = nn.Linear(command, motor)
+        
+        self.sensory_layer = nn.Linear(input_dim, sensory)
         
     def forward(self, x: torch.Tensor, dt: torch.Tensor, h_prev: Optional[Tuple[torch.Tensor, torch.Tensor]] = None):
         B = x.size(0)
@@ -363,12 +419,13 @@ class OmniBrainHub(nn.Module):
         self.input_dim = input_dim
 
         for b_id, cfg in module_configs.items():
+            motor_dim = cfg.get('motor', input_dim)
             self.brains[b_id] = NCPBackbone(
                 input_dim=input_dim,
                 sensory=cfg.get('sensory', 12),
                 inter=cfg.get('inter', 20),
                 command=cfg.get('command', 8),
-                motor=cfg.get('motor', input_dim),
+                motor=motor_dim,
                 continual_learning=continual_learning,
                 eta=eta
             )
@@ -413,8 +470,14 @@ class LiquidFusionCore(nn.Module):
         self.cnn_projector = CNNProjector(d_model=d_model, visual_tokens=v_tokens)
 
         self.latents = nn.Parameter(torch.randn(1, n_latents, d_model))
-        # Replaced MultiheadAttention with O(N) SignalSpatialMixer
+        # O(N) SignalSpatialMixer
+        self.use_fused_kernels = model_cfg.get('use_fused_kernels', True)
+        self.precision = model_cfg.get('precision', 'fp32') # fp32, fp16, int8, nf4
+        
         self.spatial_mixer = SignalSpatialMixer(d_model=d_model)
+        if self.use_fused_kernels and hasattr(torch, 'compile'):
+            # Optimization: Fused Attention and LayerNorm kernels
+            self.spatial_mixer = torch.compile(self.spatial_mixer)
 
         # Continuous Temporal Encoding (CTE) — per-batch absolute time tracking
         self.temporal_encoder = ContinuousTemporalEncoding(d_model=d_model)
@@ -443,6 +506,10 @@ class LiquidFusionCore(nn.Module):
                 motor_n=d_model,
                 d_model=d_model
             )
+            # Learned per-latent modulation
+            self.conectoma_broadcast = nn.Parameter(
+                torch.randn(1, n_latents, d_model) * 0.02 + 1.0
+            )
         elif hub_cfg:
             self.brain_mode = "hub"
             self.brain = OmniBrainHub(input_dim=d_model, module_configs=hub_cfg, continual_learning=continual, eta=eta)
@@ -456,6 +523,14 @@ class LiquidFusionCore(nn.Module):
                 motor=d_model,
                 continual_learning=continual,
                 eta=eta
+            )
+        elif model_cfg.get('mixed_memory', False):
+            self.brain_mode = "mixed"
+            self.brain = MixedMemoryCfC(
+                input_size=d_model,
+                hidden_size=d_model,
+                lstm_ratio=model_cfg.get('lstm_ratio', 0.25),
+                mode="default"
             )
         else:
             self.brain_mode = "legacy"
@@ -474,15 +549,13 @@ class LiquidFusionCore(nn.Module):
                 module.reset_plasticity()
 
         if batch_size is not None and device is not None:
-            self._abs_time_buf = torch.zeros(batch_size, 1, device=device)
+            self._abs_time_buf = torch.zeros(batch_size, 1, device=device, dtype=torch.float64)
 
-    def forward(self, sensor_data: torch.Tensor, dt: torch.Tensor,
-                prev_latents: Optional[torch.Tensor] = None,
-                modal_id: str = "default", abs_time: Optional[torch.Tensor] = None):
+    def forward(self, sensor_data, dt: torch.Tensor, prev_latents: Optional[torch.Tensor] = None, modal_id: Optional[str] = None, abs_time: Optional[torch.Tensor] = None, is_tokenized: bool = False):
         
         # Sequence Detection
         if dt.dim() == 3:
-            return self._sequence_forward(sensor_data, dt, prev_latents, modal_id)
+            return self._sequence_forward(sensor_data, dt, prev_latents, modal_id, is_tokenized=is_tokenized)
         
         if isinstance(sensor_data, dict):
             # Take batch size from the first modality in the dict
@@ -490,19 +563,27 @@ class LiquidFusionCore(nn.Module):
         else:
             batch_size = sensor_data.size(0)
         
-        # CTE Absolute Time Tracking — FIXED: per-batch tensor, not shared scalar
+        # CTE Absolute Time Tracking
         if abs_time is None:
             dt_col = dt.view(batch_size, 1)
             if self._abs_time_buf is None or self._abs_time_buf.shape[0] != batch_size:
-                self._abs_time_buf = torch.zeros(batch_size, 1, device=dt.device)
-            else:
-                # Detach to prevent gradient leakage across steps if desired, 
-                # but for BPTT within a sequence we keep it. 
-                # We re-assign to ensure it's a new tensor in the graph.
-                self._abs_time_buf = self._abs_time_buf.detach() if not torch.is_grad_enabled() else self._abs_time_buf
+                if self._abs_time_buf is not None and self._abs_time_buf.shape[0] != batch_size:
+                    logging.warning(
+                        f"[FusionCore] Batch size changed ({self._abs_time_buf.shape[0]} -> {batch_size}), "
+                        f"resetting temporal continuity."
+                    )
+                    # Also reset stateful components that depend on batch size
+                    self._last_mixer_state = None
+                    self._last_brain_state = None
+                # Use float64 for time accumulation
+                self._abs_time_buf = torch.zeros(batch_size, 1, device=dt.device, dtype=torch.float64)
             
-            self._abs_time_buf = self._abs_time_buf + dt_col
-            abs_time = self._abs_time_buf
+            # Detach buffer to prevent gradient leakage across steps
+            if self.training and self._abs_time_buf.requires_grad:
+                self._abs_time_buf = self._abs_time_buf.detach()
+                
+            self._abs_time_buf = self._abs_time_buf + dt_col.to(torch.float64)
+            abs_time = self._abs_time_buf.float()
         elif abs_time.dim() == 1:
             abs_time = abs_time.unsqueeze(-1)
         
@@ -531,12 +612,14 @@ class LiquidFusionCore(nn.Module):
             h_out, next_states = self.brain(projected_sensors, dt, self._last_brain_state or {})
             self._last_brain_state = next_states
             
-            # Conectoma output is already in d_model space, we broadcast it to n_latents for compatibility
-            return h_out.unsqueeze(1).expand(-1, self.n_latents, -1)
+            # Conectoma output uses learned per-latent modulation
+            return h_out.unsqueeze(1) * self.conectoma_broadcast
 
         # ── LEGACY & HUB PATHS (DENSE FUSION) ──
         # 1. Project into semantic tokens
-        if isinstance(sensor_data, dict):
+        if is_tokenized:
+            tokens = sensor_data
+        elif isinstance(sensor_data, dict):
             # Process Dict-based inputs
             fused_tokens = []
             for m_id, data in sensor_data.items():
@@ -579,6 +662,13 @@ class LiquidFusionCore(nn.Module):
             h_out, next_states = self.brain(x_flat, dt_flat, self._last_brain_state or {})
             self._last_brain_state = next_states
             h_next = h_out
+        elif self.brain_mode == "mixed":
+            # MixedMemoryCfC requires (h_cfc, h_lstm, c_lstm)
+            if self._last_brain_state is None:
+                self._last_brain_state = self.brain.init_state(B * N, x_flat.device)
+            
+            h_next, next_state = self.brain(x_flat, self._last_brain_state, dt_flat)
+            self._last_brain_state = next_state
         elif self.brain_mode == "ncp":
             # If prev_latents is a tuple, it's the full (output, internal_state)
             h_state = None
@@ -598,23 +688,117 @@ class LiquidFusionCore(nn.Module):
 
         return h_next.reshape(B, N, D)
 
-    def _sequence_forward(self, sensor_seq, dt_seq, prev_latents, modal_id):
+    def _sequence_forward(self, sensor_seq, dt_seq, prev_latents, modal_id, is_tokenized=False):
         B, T = dt_seq.shape[:2]
+        
+        # Support per-timestep modal_ids
+        if isinstance(modal_id, (list, tuple)):
+            modal_ids = modal_id
+            assert len(modal_ids) == T, f"modal_id list length ({len(modal_ids)}) must match T ({T})"
+        else:
+            modal_ids = [modal_id] * T
+        
+        # Vectorized Projection and CTE
+        # 1. Vectorized Spatial/Semantic Projection
+        if is_tokenized:
+            tokens_seq = sensor_seq
+        elif isinstance(sensor_seq, dict):
+            fused_tokens = []
+            for m_id, data in sensor_seq.items():
+                if data.dim() == 5: # (B, T, C, H, W)
+                    flat_data = data.view(B*T, *data.shape[2:])
+                    proj = self.cnn_projector(flat_data)
+                    fused_tokens.append(proj.view(B, T, *proj.shape[1:]))
+                else: # (B, T, dim)
+                    flat_data = data.reshape(B*T, *data.shape[2:])
+                    proj = self.input_projector(flat_data if flat_data.dim() == 3 else flat_data.unsqueeze(1), m_id)
+                    fused_tokens.append(proj.view(B, T, *proj.shape[1:]))
+            tokens_seq = torch.cat(fused_tokens, dim=2)
+        else:
+            if sensor_seq.dim() == 5:
+                flat_data = sensor_seq.view(B*T, *sensor_seq.shape[2:])
+                proj = self.cnn_projector(flat_data)
+                tokens_seq = proj.view(B, T, *proj.shape[1:])
+            else:
+                # Check if modal_ids are heterogeneous
+                unique_ids = set(modal_ids)
+                if len(unique_ids) == 1:
+                    # Homogeneous: vectorize all at once
+                    flat_data = sensor_seq.reshape(B*T, *sensor_seq.shape[2:])
+                    proj = self.input_projector(flat_data if flat_data.dim() == 3 else flat_data.unsqueeze(1), modal_ids[0])
+                    tokens_seq = proj.view(B, T, *proj.shape[1:])
+                else:
+                    # Heterogeneous: project each timestep with its own modal_id
+                    step_projs = []
+                    for t_idx in range(T):
+                        step_data = sensor_seq[:, t_idx]  # (B, ...)
+                        proj = self.input_projector(
+                            step_data.unsqueeze(1) if step_data.dim() == 2 else step_data,
+                            modal_ids[t_idx]
+                        )
+                        step_projs.append(proj)
+                    tokens_seq = torch.stack(step_projs, dim=1)
+                
+        # 2. Vectorized CTE (Continuous Temporal Encoding)
+        dt_flat = dt_seq.squeeze(-1) if dt_seq.dim() == 3 else dt_seq
+        # Compute cumsum in float64 for precision
+        abs_times = torch.cumsum(dt_flat.to(torch.float64), dim=1) # (B, T)
+        
+        if self._abs_time_buf is not None:
+            if self.training and self._abs_time_buf.requires_grad:
+                self._abs_time_buf = self._abs_time_buf.detach()
+            abs_times = abs_times + self._abs_time_buf
+            
+        time_emb_seq = self.temporal_encoder(abs_times.float()) # (B, T, D)
+        time_emb_seq = time_emb_seq.unsqueeze(2) # (B, T, 1, D)
+        tokens_seq = tokens_seq + time_emb_seq
+        
+        # Sync absolute time buffer with the end of the sequence
+        self._abs_time_buf = abs_times[:, -1].unsqueeze(-1).detach()
+        
+        # 3. Recurrent Time Evolution
         outputs = []
         curr_latents = prev_latents
-        
-        # Calculate absolute time for CTE in sequences
-        dt_flat = dt_seq.squeeze(-1) if dt_seq.dim() == 3 else dt_seq
-        abs_times = torch.cumsum(dt_flat, dim=1)
-        
         for t in range(T):
-            curr_latents = self.forward(
-                sensor_seq[:, t], dt_seq[:, t], curr_latents, modal_id, abs_time=abs_times[:, t]
-            )
-            outputs.append(curr_latents)
+            tokens = tokens_seq[:, t]
+            dt_t = dt_seq[:, t]
             
-        # V1 Compat: If we are doing a single sequence forward call (like in smoke tests),
-        # return only the LAST step unless we are in a training context (detected via Grad).
+            # Legacy/NCP/Hub paths (use spatial_mixer)
+            latents = self.latents.expand(B, -1, -1)
+            latents_fused, next_mixer_state = self.spatial_mixer(
+                latents, tokens, prev_state=self._last_mixer_state
+            )
+            self._last_mixer_state = next_mixer_state
+            
+            x_flat = latents_fused.reshape(B * self.n_latents, -1)
+            dt_flat_t = dt_t.view(B, 1).expand(B, self.n_latents).reshape(B * self.n_latents, 1)
+            
+            # Brain Step
+            if self.brain_mode == "hub":
+                h_out, next_states = self.brain(x_flat, dt_flat_t, self._last_brain_state or {})
+                self._last_brain_state = next_states
+                curr_latents = h_out
+            elif self.brain_mode == "mixed":
+                if self._last_brain_state is None:
+                    self._last_brain_state = self.brain.init_state(B * self.n_latents, x_flat.device)
+                curr_latents, next_state = self.brain(x_flat, self._last_brain_state, dt_flat_t)
+                self._last_brain_state = next_state
+            elif self.brain_mode == "ncp":
+                h_state = None
+                if isinstance(curr_latents, tuple):
+                    h_state = curr_latents[1]
+                elif self._last_brain_state is not None:
+                    h_state = self._last_brain_state
+                curr_latents, h_state_next = self.brain(x_flat, dt_flat_t, h_state)
+                self._last_brain_state = h_state_next
+            else: # legacy
+                h_prev = curr_latents if curr_latents is not None else torch.zeros_like(x_flat)
+                if h_prev.dim() == 3: h_prev = h_prev.reshape(B * self.n_latents, -1)
+                curr_latents = self.brain(x_flat, h_prev, dt_flat_t)
+            
+            curr_latents = curr_latents.reshape(B, self.n_latents, -1)
+            outputs.append(curr_latents)
+
         if not torch.is_grad_enabled():
             return outputs[-1]
             
@@ -779,9 +963,6 @@ class MixedMemoryCfC(nn.Module):
     vanishing gradients on very long sequences (> 200 steps).
     The LSTM auxiliary provides long-range gradient highways, while
     the CfC retains control of the fast dynamics.
-
-    The mixing ratio is learned: the model decides how much to rely
-    on each memory type per timestep.
     """
     def __init__(self, input_size: int, hidden_size: int,
                  lstm_ratio: float = 0.25, mode: str = "default"):
@@ -792,41 +973,43 @@ class MixedMemoryCfC(nn.Module):
 
         self.cfc  = BioLiquidCell(input_size, hidden_size, mode=mode)
         self.lstm = nn.LSTMCell(input_size, lstm_size)
-        # Learned mixer: decides how much LSTM context to inject into CfC output
+        
+        # Gated Fusion
         self.mixer = nn.Linear(hidden_size + lstm_size, hidden_size)
         self.gate  = nn.Linear(hidden_size + lstm_size, hidden_size)
+
+    def init_state(self, batch_size: int, device: torch.device):
+        h_cfc = torch.zeros(batch_size, self.hidden_size, device=device)
+        h_lstm = torch.zeros(batch_size, self.lstm_size, device=device)
+        c_lstm = torch.zeros(batch_size, self.lstm_size, device=device)
+        return (h_cfc, h_lstm, c_lstm)
 
     def forward(
         self,
         x: torch.Tensor,
-        h_cfc: torch.Tensor,
-        h_lstm: torch.Tensor,
-        c_lstm: torch.Tensor,
+        state: Tuple[torch.Tensor, torch.Tensor, torch.Tensor],
         dt: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
         """
         Returns:
             h_out:   (B, hidden_size) — mixed hidden state
-            h_lstm:  (B, lstm_size)   — updated LSTM hidden state
-            c_lstm:  (B, lstm_size)   — updated LSTM cell state
+            next_state: (h_cfc, h_lstm, c_lstm)
         """
-        h_cfc_next = self.cfc(x, h_cfc, dt)
-        h_lstm_next, c_lstm_next = self.lstm(x, (h_lstm, c_lstm))
+        h_cfc_prev, h_lstm_prev, c_lstm_prev = state
+        
+        # 1. Liquid Dynamics (CfC Branch)
+        h_cfc_next = self.cfc(x, h_cfc_prev, dt)
+        
+        # 2. Memory Highway (LSTM Branch)
+        h_lstm_next, c_lstm_next = self.lstm(x, (h_lstm_prev, c_lstm_prev))
+        
+        # 3. Gated Fusion
+        cat = torch.cat([h_cfc_next, h_lstm_next], dim=-1)
+        g = torch.sigmoid(self.gate(cat))
+        h_mixed = (1.0 - g) * h_cfc_next + g * self.mixer(cat)
+        
+        return h_mixed, (h_cfc_next, h_lstm_next, c_lstm_next)
 
-        combined = torch.cat([h_cfc_next, h_lstm_next], dim=-1)
-        # Gated mixing: LSTM provides long-range context to the CfC output
-        mix_gate = torch.sigmoid(self.gate(combined))
-        h_mixed  = mix_gate * torch.tanh(self.mixer(combined)) + (1.0 - mix_gate) * h_cfc_next
-
-        return h_mixed, h_lstm_next, c_lstm_next
-
-    def init_state(self, batch_size: int, device: torch.device) -> Tuple:
-        """Initialize all hidden states to zero."""
-        return (
-            torch.zeros(batch_size, self.hidden_size, device=device),
-            torch.zeros(batch_size, self.lstm_size, device=device),
-            torch.zeros(batch_size, self.lstm_size, device=device),
-        )
 # ─────────────────────────────────────────────────────────────────────
 #  NEW: BioConectoma Architecture (Hub & Wall)
 # ─────────────────────────────────────────────────────────────────────
@@ -843,24 +1026,42 @@ class NCPWiring:
         self.command_n = command_n
         self.motor_n = motor_n
         
-        torch.manual_seed(seed)
+        gen = torch.Generator().manual_seed(seed)
         
         # 1. Sensory -> Inter (Feedforward)
-        self.sens_inter_mask = (torch.rand(self.total_sensory, inter_n) < 0.3).float()
+        self.sens_inter_mask = (torch.rand((self.total_sensory, inter_n), generator=gen) < 0.3).float()
         
         # 2. Inter -> Inter (Recurrent Wall)
-        self.inter_inter_mask = (torch.rand(inter_n, inter_n) < 0.2).float()
+        self.inter_inter_mask = (torch.rand((inter_n, inter_n), generator=gen) < 0.2).float()
         self.inter_inter_mask.fill_diagonal_(0)
         
         # 3. Inter -> Command (Feedforward)
-        self.inter_comm_mask = (torch.rand(inter_n, command_n) < 0.4).float()
+        self.inter_comm_mask = (torch.rand((inter_n, command_n), generator=gen) < 0.4).float()
         
         # 4. Command -> Command (Highly Recurrent)
-        self.comm_comm_mask = (torch.rand(command_n, command_n) < 0.5).float()
+        self.comm_comm_mask = (torch.rand((command_n, command_n), generator=gen) < 0.5).float()
         self.comm_comm_mask.fill_diagonal_(0)
         
         # 5. Command -> Motor (Feedforward)
-        self.comm_motor_mask = (torch.rand(command_n, motor_n) < 0.6).float()
+        self.comm_motor_mask = (torch.rand((command_n, motor_n), generator=gen) < 0.6).float()
+        
+        # Island Prevention
+        def ensure_connectivity(mask):
+            # Ensure every row (output) has at least one connection
+            rows = mask.sum(dim=1) == 0
+            if rows.any():
+                mask[rows, torch.randint(0, mask.size(1), (rows.sum(),), generator=gen)] = 1.0
+            # Ensure every column (input) has at least one connection
+            cols = mask.sum(dim=0) == 0
+            if cols.any():
+                mask[torch.randint(0, mask.size(0), (cols.sum(),), generator=gen), cols] = 1.0
+            return mask
+        
+        self.sens_inter_mask = ensure_connectivity(self.sens_inter_mask)
+        self.inter_inter_mask = ensure_connectivity(self.inter_inter_mask)
+        self.inter_comm_mask = ensure_connectivity(self.inter_comm_mask)
+        self.comm_comm_mask = ensure_connectivity(self.comm_comm_mask)
+        self.comm_motor_mask = ensure_connectivity(self.comm_motor_mask)
 
 
 class BioConectomaHub(nn.Module):
@@ -920,16 +1121,20 @@ class BioConectomaHub(nn.Module):
         hidden_size = recurrence_mask.size(0)
         backbone_units = cell.backbone_units
         
-        # For the backbone's first layer: mask the recurrent (hidden) portion of the input
-        bb_first = cell.backbone[0]  # nn.Linear(input_size + hidden_size, backbone_units)
-        bb_in = bb_first.weight.size(1)  # input_size + hidden_size
-        input_part = torch.ones((backbone_units, input_size), device=recurrence_mask.device)
-        rec_part = recurrence_mask.T  # (hidden_size, hidden_size) → match weight layout
-        # Expand rec_part to (backbone_units, hidden_size) — allow all backbone units to see masked recurrence
-        rec_part_expanded = rec_part.mean(dim=0, keepdim=True).expand(backbone_units, -1).clamp(0, 1)
-        rec_part_expanded = (rec_part_expanded > 0.3).float()  # Threshold to binary
-        bb_mask = torch.cat([input_part, rec_part_expanded], dim=1)
-        prune.custom_from_mask(bb_first, name="weight", mask=bb_mask)
+        # For the backbones' first layers: mask the recurrent (hidden) portion of the input
+        for bb in [cell.backbone_state, cell.backbone_time]:
+            bb_first = bb[0]  # nn.Linear(input_size + hidden_size, units)
+            bb_units = bb_first.weight.size(0)
+            bb_in = bb_first.weight.size(1)  # input_size + hidden_size
+            
+            input_part = torch.ones((bb_units, input_size), device=recurrence_mask.device)
+            
+            # Repeat the specific recurrence mask rows to fill backbone_units
+            repeats = (bb_units + hidden_size - 1) // hidden_size
+            rec_part_expanded = recurrence_mask.T.repeat(repeats, 1)[:bb_units]
+            
+            bb_mask = torch.cat([input_part, rec_part_expanded], dim=1)
+            prune.custom_from_mask(bb_first, name="weight", mask=bb_mask)
 
     def forward(self, step_sensors: Dict[str, torch.Tensor], dt: torch.Tensor, h_prev: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         # h_prev contains: 'sensory' (B, total_sens), 'wall' (B, inter_n), 'command' (B, command_n)
@@ -947,11 +1152,15 @@ class BioConectomaHub(nn.Module):
             n = self.sensory_cfg[m_id]
             h_m_prev = h_sens_prev[:, offset:offset+n]
             
-            # If sensor data is present, use it. Otherwise, perform decay step.
             x_m = step_sensors.get(m_id)
             if x_m is None:
-                # Decay only: zero input to the LTC cell
-                x_m = torch.zeros(B, self.d_model, device=device)
+                matching_keys = [k for k in step_sensors.keys() if k.startswith(f"{m_id}_")]
+                if matching_keys:
+                    # Average multiple sub-modality inputs (e.g. lidar_front, lidar_back)
+                    x_m = torch.stack([step_sensors[k] for k in matching_keys]).mean(dim=0)
+            
+            if x_m is None:
+                x_m = torch.zeros(B, module.input_size, device=device)
             
             h_m_next = module(x_m, h_m_prev, dt)
             h_sens_next[:, offset:offset+n] = h_m_next

@@ -48,7 +48,8 @@ class OmniLogDataset(Dataset):
             })
 
         self._parse_csv(csv_path)
-        self.num_sequences = max(1, len(self.timestamps) - seq_len)
+        
+        self.num_sequences = max(0, len(self.timestamps) - seq_len + 1)
 
     def _parse_csv(self, csv_path: str):
         """Read the CSV and map columns to internal arrays (handling multi-dim)."""
@@ -57,10 +58,19 @@ class OmniLogDataset(Dataset):
             rows = list(reader)
 
         self.timestamps = np.array([float(r['timestamp']) for r in rows], dtype=np.float64)
-        self.dt = np.diff(self.timestamps, prepend=self.timestamps[0] - 0.1)
-        self.dt = np.clip(self.dt, 0.001, 1.0).astype(np.float32)
+        
+        
+        if len(self.timestamps) == 0:
+            raise ValueError("OmniTrain Dataset Error: The provided CSV file contains no data rows.")
+        elif len(self.timestamps) == 1:
+            self.dt = np.array([0.1], dtype=np.float32)
+        else:
+            self.dt = np.diff(self.timestamps, prepend=self.timestamps[0] - 0.1)
+            self.dt = np.clip(self.dt, 0.001, 1.0).astype(np.float32)
 
         self.data_store = {}
+        
+        self.raw_data_store = {}
 
         # Parse and Normalize inputs (Robust Z-Score Normalization)
         # Fix applied (v2.1): replaced static (x - min)/(max - min) with
@@ -79,6 +89,9 @@ class OmniLogDataset(Dataset):
                 mean = float(raw.mean())
                 std  = float(raw.std() + 1e-6)
                 self.data_store[m_id] = np.clip((raw - mean) / std, -5.0, 5.0)
+                
+                if not hasattr(self, 'raw_data_store'): self.raw_data_store = {}
+                self.raw_data_store[m_id] = raw
                 
                 if target_cfg:
                     target_cfg['norm_mean'] = mean
@@ -99,9 +112,13 @@ class OmniLogDataset(Dataset):
                     s = float(raw.std() + 1e-6)
                     means.append(m)
                     stds.append(s)
-                    storage.append(np.clip((raw - m) / s, -5.0, 5.0))
+                    
+                    storage.append(np.clip((raw - m) / s, -3.0, 3.0))
 
                 self.data_store[m_id] = np.stack(storage, axis=1)
+                
+                self.raw_data_store[m_id] = np.stack([np.array([float(r[f"{m_id}_{i}" if f"{m_id}_{i}" in rows[0] else m_id]) for r in rows]) for i in range(dim)], axis=1)
+                
                 if target_cfg:
                     target_cfg['norm_mean'] = means
                     target_cfg['norm_std'] = stds
@@ -158,21 +175,26 @@ class OmniLogDataset(Dataset):
             else:
                 target_list = []
                 for d in range(mapping['dim']):
-                    target_list.append(self.data_store[f"{h_id}_{d}"][start:end])
+                    raw_target = self.data_store[f"{h_id}_{d}"][start:end]
+                    
+                    # If target is regression and large, gradients can explode.
+                    target_list.append(raw_target)
                 batch['targets'][h_id] = torch.tensor(np.stack(target_list, axis=1), dtype=torch.float32)
 
         # Hardware sensors for failsafe (Tier 1)
-        # Fix applied: Use min() across all dimensions to ensure any violation is caught
+        
         hw_list = []
         for mapping in self.input_mappings:
-            data = self.data_store[mapping['id']][start:end]
-            if data.ndim == 2:
-                hw_list.append(np.min(data, axis=1)) # Take worst-case (min) across all beams/pixels
-            else:
-                hw_list.append(data)
-        batch['hw_sensors'] = torch.tensor(np.stack(hw_list, axis=1), dtype=torch.float32)
+            raw_data = self.raw_data_store[mapping['id']][start:end]
+            if raw_data.ndim == 1:
+                raw_data = raw_data.reshape(-1, 1)
+            hw_list.append(raw_data)
+        
+        # Concatenate all raw inputs along dimension 1 (Batch, Seq, TotalRawDim)
+        # Shield will use self.state_extractor to pick relevant indices or pool them.
+        batch['hw_sensors'] = torch.tensor(np.concatenate(hw_list, axis=-1), dtype=torch.float32)
 
-        # Fix #5: Stateful Training support
+        
         # is_start=True if this is the beginning of the entire log.
         # When shuffle=False, this allows the trainer to propagate state.
         batch['is_start'] = (idx == 0)

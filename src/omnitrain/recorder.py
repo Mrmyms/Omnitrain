@@ -101,38 +101,45 @@ class OmniRecorder:
                         time.sleep(0.002) # Ultra-short sleep
                         continue
 
-                    # 2. Process every token INDIVIDUALLY to create one row per event
+                    
+                    # This prevents massive data inflation (ZOH repetition) when multiple 
+                    # sensors have drastically different frequencies.
+                    last_timestamp = new_tokens[-1]['timestamp']
+                    
+                    # Update global state with all new tokens
                     for t in new_tokens:
                         m_id = t['modal_id']
-                        # Update the global ZOH state
                         if m_id in self.latest_data:
                             self.latest_data[m_id] = t['data']
                         
-                        # 3. Build and write the row for THIS SPECIFIC event
-                        current_row = {'timestamp': t['timestamp']}
+                    # Build ONE row representing the system state after this burst of events
+                    current_row = {'timestamp': last_timestamp}
+                    
+                    for mid, dim in input_info:
+                        data = self.latest_data[mid]
                         
-                        for mid, dim in input_info:
-                            data = self.latest_data[mid]
-                            if dim == 1:
-                                current_row[mid] = float(data[0]) if hasattr(data, '__len__') else float(data)
-                            else:
-                                for i in range(dim):
-                                    current_row[f"{mid}_{i}"] = float(data[i]) if i < len(data) else 0.0
+                        data_arr = np.atleast_1d(data)
+                        if dim == 1:
+                            current_row[mid] = float(data_arr[0])
+                        else:
+                            for i in range(dim):
+                                current_row[f"{mid}_{i}"] = float(data_arr[i]) if i < len(data_arr) else 0.0
 
-                        for hid, dim, n_classes in head_info:
-                            data = self.latest_data[hid]
-                            if n_classes > 0:
-                                current_row[hid] = int(data[0]) if hasattr(data, '__len__') else int(data)
-                            else:
-                                for i in range(dim):
-                                    current_row[f"{hid}_{i}"] = float(data[i]) if i < len(data) else 0.0
+                    for hid, dim, n_classes in head_info:
+                        data = self.latest_data[hid]
+                        data_arr = np.atleast_1d(data)
+                        if n_classes > 0:
+                            current_row[hid] = int(data_arr[0])
+                        else:
+                            for i in range(dim):
+                                current_row[f"{hid}_{i}"] = float(data_arr[i]) if i < len(data_arr) else 0.0
 
-                        writer.writerow(current_row)
-                        row_count += 1
-                        
-                        # Periodic flush to ensure data isn't lost if crashed
-                        if row_count % 100 == 0:
-                            f.flush()
+                    writer.writerow(current_row)
+                    row_count += 1
+                    
+                    # Periodic flush to ensure data isn't lost if crashed
+                    if row_count % 100 == 0:
+                        f.flush()
                     
                     self.last_read_idx = next_idx
 

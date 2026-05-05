@@ -345,15 +345,17 @@ class OmniStream:
         action = result['action']
     """
 
-    def __init__(self, core, shield=None):
+    def __init__(self, core, shield=None, use_fixed_dt: Optional[float] = None):
         """
         Args:
             core: LiquidFusionCore or FusionCore instance.
             shield: Optional OmniShieldGuard for safety enforcement.
+            use_fixed_dt: If set, uses this DT instead of wall-clock time.
         """
         self.core = core
         self.shield = shield
         self.detector = TypeDetector()
+        self.use_fixed_dt = use_fixed_dt
 
         # Internal state
         self._prev_latents = None
@@ -398,7 +400,8 @@ class OmniStream:
         # ── 1. Auto-compute dt ──
         now = time.perf_counter()
         if dt is None:
-            dt = now - self._last_time
+            
+            dt = self.use_fixed_dt if self.use_fixed_dt is not None else (now - self._last_time)
         self._last_time = now
 
         dt_tensor = torch.tensor([dt], dtype=torch.float32)
@@ -408,7 +411,22 @@ class OmniStream:
             # Multi-sensor dict: process each key as a separate modality
             return self._send_multi(data, dt_tensor, dt, hw_sensors)
 
-        detected = self.detector.detect(data, modal_id)
+        
+        if type(data) is torch.Tensor and modal_id is not None:
+            # Replicate _from_tensor minimal reshaping for performance
+            t = data.float()
+            if t.dim() == 0: t = t.unsqueeze(0).unsqueeze(0).unsqueeze(0)
+            elif t.dim() == 1: t = t.unsqueeze(0).unsqueeze(0)
+            elif t.dim() == 2: t = t.unsqueeze(0)
+            
+            # Create a mock DetectedInput structure to satisfy downstream
+            from types import SimpleNamespace
+            detected = SimpleNamespace(
+                tensor=t, modal_id=modal_id, is_image=(t.dim() == 4),
+                original_type=f"tensor{list(t.shape)}", shape_description=str(list(t.shape))
+            )
+        else:
+            detected = self.detector.detect(data, modal_id)
         
         # ── 3. Runtime Normalization ──
         # Fix: Apply Z-Score normalization if stats are available in core.config
@@ -475,17 +493,23 @@ class OmniStream:
         latents = self._prev_latents
         detected_list = []
 
-        # Fix: Unified Fusion. We collect all tensors and call the core ONCE.
-        # This prevents the 'double evolution' bug where the brain age increments
-        # multiple times per logical time step.
+        # COLLECT: collection of all tensors for unified call
+        
         sensor_dict = {}
-        for key, value in data_dict.items():
+        
+        # If dt_tensor has multiple values, we use them; otherwise, we use the global dt.
+        dt_inputs = {}
+        
+        for key, value in sorted(data_dict.items()):
             detected = self.detector.detect(value, modal_id=key)
             detected_list.append(detected)
             
             # Fix: Apply Z-Score normalization for multi-sensor bundles
             norm_tensor = self._apply_normalization(detected.tensor, detected.modal_id)
             sensor_dict[detected.modal_id] = norm_tensor
+            
+            
+            dt_inputs[detected.modal_id] = dt_tensor
 
         with torch.no_grad():
             latents = self.core(

@@ -85,16 +85,19 @@ def handle_train(args):
             layout["metrics"].update(Panel(table, title="Live Conectoma Flow", border_style="white"))
 
             # Update Safety Status
-            status_color = "green" if bar_val < 0.05 else ("yellow" if bar_val < 0.2 else "red")
+            
+            # This ensures the color reflects actual safety risk.
+            violation = max(0.0, -bar_val) 
+            status_color = "green" if violation < 0.01 else ("yellow" if violation < 0.1 else "red")
             saf_msg = "OPTIMAL" if status_color == "green" else ("STABILIZING" if status_color == "yellow" else "VIOLATION")
             
             layout["safety"].update(Panel(
-                Align.center(f"\n[bold {status_color}]{saf_msg}[/]\n\n[dim]Lagrangian λ: {m.get('lambda', 0):.3f}[/]"),
+                Align.center(f"\n[bold {status_color}]{saf_msg}[/]\n\n[dim]Violation: {violation:.4f} | λ: {m.get('lambda', 0):.3f}[/]"),
                 title="OmniShield Guard",
                 border_style=status_color
             ))
             
-            footer_text = f"Optimizing BioLiquid Graph... LR={trainer.lr:.6f} | [bold white]GODMODE ACTIVE[/]"
+            footer_text = f"Optimizing Neural Kernel... LR={trainer.lr:.6f} | [bold white]TRAINING ACTIVE[/]"
             layout["footer"].update(Panel(footer_text, border_style="dim"))
 
 
@@ -137,14 +140,22 @@ def handle_diagnose(args):
     console.print(Panel(health_info.strip(), title="Internal Conectoma Health", border_style="white", box=box.HORIZONTALS))
 
 def handle_prune(args):
-    model_path = args[0] if args else "SafeDelivery_Robot_final.omni"
+    
+    model_path = args[0] if args else None
+    if not model_path and os.path.exists('config.yaml'):
+        with open('config.yaml', 'r') as f:
+            cfg = yaml.safe_load(f)
+            model_path = f"{cfg.get('project', 'robot')}_final.omni"
+    
+    if not model_path:
+        model_path = "SafeDelivery_Robot_final.omni"
     threshold = float(args[1]) if len(args) > 1 else 0.01
     
     if not os.path.exists(model_path):
         console.print(f"[red]ERROR[/red] Model not found: {model_path}")
         return
 
-    console.print("[yellow]WARNING:[/] Pruning in Conectoma v2.0 is experimental. It may sever biological pathways.")
+    console.print("[yellow]WARNING:[/] Pruning in Conectoma v2.1 is experimental. It may sever biological pathways.")
     exporter = OmniExporter()
     core, heads, config = exporter.load_as_inference(model_path)
     
@@ -202,20 +213,36 @@ def handle_init(args):
 
 def handle_record(args):
     """Start high-fidelity TokenBus recording."""
-    session = args[0] if args else "omni_default"
-    out_path = args[1] if len(args) > 1 else "recorded_telemetry.csv"
     
+    # Usage: /record [session_id] [output.csv] [--config path.yaml]
+    session = "omni_default"
+    out_path = "recorded_telemetry.csv"
+    config_path = "config.yaml"
+
+    # Simple positional parsing
+    if args and not args[0].startswith("-"):
+        session = args[0]
+        if len(args) > 1 and not args[1].startswith("-"):
+            out_path = args[1]
+    
+    # Flag parsing
+    if "--config" in args:
+        idx = args.index("--config")
+        if idx + 1 < len(args):
+            config_path = args[idx+1]
+    elif any(a.endswith('.yaml') for a in args):
+        # Fallback for old style: find the first .yaml
+        config_path = next(a for a in args if a.endswith('.yaml'))
+
+    if not os.path.exists(config_path):
+        console.print(f"[red]ERROR[/red] Config not found: {config_path}")
+        return
+
     console.print(Panel(
-        f"Connecting to [bold color(117)]{session}[/]...\nOutput: [white]{out_path}[/]\n\n[dim]Press Ctrl+C to stop recording and flush buffer.[/]",
+        f"Connecting to [bold color(117)]{session}[/]...\nOutput: [white]{out_path}[/]\nConfig: [white]{config_path}[/]\n\n[dim]Press Ctrl+C to stop recording and flush buffer.[/]",
         title="OmniRecorder Phase 1",
         border_style="color(117)"
     ))
-    
-    # Fix: Auto-detect config path
-    config_path = "config.yaml"
-    if not os.path.exists(config_path):
-        console.print("[red]ERROR[/red] config.yaml not found in current directory.")
-        return
 
     try:
         recorder = OmniRecorder(config_path=config_path, session_id=session)
@@ -258,11 +285,17 @@ def handle_status(args):
     table.add_row("Compute Engine", f"[bold green]{dev}[/]", f"PyTorch {torch.__version__}")
 
     # IPC
-    import psutil
-    shm_size = 0
+    shm_status = "[green]HEALTHY[/]"
+    shm_details = "Managed by OS"
     if os.path.exists("/dev/shm"):
+        # Linux specific detailed check
         shm_size = sum(os.path.getsize(os.path.join("/dev/shm", f)) for f in os.listdir("/dev/shm") if "omni" in f)
-    table.add_row("Shared Memory", "[green]HEALTHY[/]", f"{shm_size / 1024 / 1024:.1f} MB utilized")
+        shm_details = f"{shm_size / 1024 / 1024:.1f} MB utilized"
+    elif platform.system() == "Darwin":
+        # Mac specific check (limited visibility into POSIX SHM)
+        shm_details = "Active (MacOS Posix IPC)"
+    
+    table.add_row("Shared Memory", shm_status, shm_details)
 
     # Config
     cfg_stat = "[green]FOUND[/]" if os.path.exists("config.yaml") else "[red]MISSING[/]"
@@ -273,6 +306,7 @@ def handle_status(args):
 def handle_bus(args):
     session = args[0] if args else "omni_default"
     console.print(f"[white]BUS[/white] Sniffing session: [color(117)]{session}[/]")
+    bus = None
     try:
         bus = TokenBus(session_id=session, create=False)
         with Live(console=console, refresh_per_second=10) as live:
@@ -300,12 +334,17 @@ def handle_bus(args):
                 live.update(table)
                 time.sleep(0.1)
     except KeyboardInterrupt: pass
+    finally:
+        
+        if bus is not None:
+            bus.cleanup()
 
 def print_dashboard():
-    banner = "[bold arctic_blue]OMNITRAIN GODMODE[/] v2.1.0 | [bold white]Supreme Industrial Kernel[/]"
+    banner = "[bold arctic_blue]OMNITRAIN[/] v2.1.0 | [bold white]Industrial Robotics Framework[/]"
     
     stats_list = [
         "[bold cyan]/godmode[/]    Deep Conectoma Integrity Audit",
+        "[bold cyan]/connect[/]    Connectivity Hub & Sensor Setup",
         "[bold cyan]/init[/]       Scaffold Industrial Environment",
         "[bold cyan]/train[/]      Stateful Lagrangian Training",
         "[bold cyan]/record[/]     High-Fidelity Event Capture",
@@ -330,11 +369,10 @@ def print_dashboard():
         box=box.DOUBLE_EDGE,
         padding=(1, 2)
     ))
-    console.print("[dim italic]Everything is perfect. System primed for Teletón donation event.[/]\n")
 
 def handle_godmode(args):
     """Supreme System Audit."""
-    console.print("\n[bold arctic_blue]INITIALIZING SUPREME AUDIT (GODMODE)[/bold arctic_blue]\n")
+    console.print("\n[bold arctic_blue]INITIALIZING SYSTEM AUDIT[/bold arctic_blue]\n")
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -354,14 +392,29 @@ def handle_godmode(args):
             
     # Real checks
     handle_status([])
-    console.print("\n[bold green]OK: SYSTEM STATUS: SUPREME[/bold green]")
-    console.print("[white]All synaptic pathways are clear. Training pipeline at 100% fidelity.[/]\n")
+    console.print("\n[bold green]OK: SYSTEM STATUS: READY[/bold green]")
+    console.print("[white]All checks passed. System ready for production training.[/]\n")
+
+def handle_connect(args):
+    """Connectivity Guide & Scaffolding."""
+    console.print(Panel(
+        "[bold arctic_blue]OMNITRAIN CONNECTIVITY HUB[/]\n\n"
+        "How would you like to connect your sensors?\n\n"
+        "• [bold cyan]ROS 2[/]         : Use [white]plugins_ros2.py[/] for topics like /scan and /camera.\n"
+        "• [bold cyan]Isaac Sim[/]     : Use [white]isaac_bridge.py[/] for RTX Lidar simulation.\n"
+        "• [bold cyan]Local Files[/]   : Use [white]plugins_real.py[/] for CSV or Image Folders.\n"
+        "• [bold cyan]edgeCP RPC[/]   : Use [white]edgecp_bridge.py[/] for Dual-Brain HW simulation.\n\n"
+        "[italic white]Check docs/HOW_TO_CONNECT.md for step-by-step code examples.[/]",
+        title="Input Integration",
+        border_style="color(117)"
+    ))
 
 
 def main():
     print_dashboard()
     commands = {
         "/init": handle_init,
+        "/connect": handle_connect,
         "/train": handle_train,
         "/record": handle_record,
         "/diagnose": handle_diagnose,
@@ -370,7 +423,7 @@ def main():
         "/bus": handle_bus,
         "/status": handle_status,
         "/godmode": handle_godmode,
-        "/help": lambda args: console.print("/godmode, /init, /train, /record, /diagnose, /deploy, /prune, /bus, /status, /exit"),
+        "/help": lambda args: console.print("/godmode, /connect, /init, /train, /record, /diagnose, /deploy, /prune, /bus, /status, /exit"),
 
         "/clear": lambda _: os.system('clear' if os.name == 'posix' else 'cls'),
         "/exit": lambda _: sys.exit(0)

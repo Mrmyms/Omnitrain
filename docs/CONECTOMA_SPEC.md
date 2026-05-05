@@ -1,13 +1,13 @@
-# OmniTrain Conectoma v2.0: Technical Deep Dive & Architectural Specification
+# OmniTrain Conectoma v2.1.0: Technical Deep Dive & Architectural Specification
 
 **Abstract:** 
-This document serves as the definitive technical specification for the OmniTrain Conectoma v2.0 framework. It details the transition from dense, synchronous deep learning fusion to a biologically plausible, sparse, and asynchronous "Hub & Wall" topology based on Neural Circuit Policies (NCPs). By leveraging Closed-form Continuous-time (CfC) solvers, the system achieves scale-invariant temporal continuity, isolated multi-modal sensory processing, and mathematically verifiable safety through Input Convex Neural Networks (ICNNs).
+This document serves as the definitive technical specification for the OmniTrain Conectoma v2.1.0 framework. It details the transition from dense, synchronous deep learning fusion to a biologically plausible, sparse, and asynchronous "Hub & Wall" topology based on Neural Circuit Policies (NCPs). By leveraging Closed-form Continuous-time (CfC) solvers, the system achieves scale-invariant temporal continuity, isolated multi-modal sensory processing, and mathematically verifiable safety through Input Convex Neural Networks (ICNNs).
 
 ---
 
 ## 1. Neurobiological & Theoretical Foundations
 
-The architecture of OmniTrain v2.0 is not merely a mathematical abstraction; it is directly inspired by the efficiency and robustness of biological nervous systems, specifically drawing from cutting-edge research at MIT CSAIL.
+The architecture of OmniTrain v2.1.0 is not merely a mathematical abstraction; it is directly inspired by the efficiency and robustness of biological nervous systems, specifically drawing from cutting-edge research at MIT CSAIL.
 
 ### 1.1 The *C. elegans* Connectome & Extreme Sparsity
 The nematode *Caenorhabditis elegans* possesses exactly 302 neurons and approximately 7,000 synapses, yet it exhibits complex behaviors: navigation, foraging, and threat avoidance. Standard deep learning models require millions of parameters to achieve similar control tasks. 
@@ -35,7 +35,7 @@ In mammalian brains, the thalamus acts as a relay and gating station. Sensory si
 
 Traditional sensor fusion relies on concatenating disparate sensor streams into a unified feature vector at time $t$. This forces synchronization—a Lidar at 40Hz and a Camera at 10Hz must be artificially aligned, destroying the precise physical timing of the events and allowing noise in one sensor to immediately contaminate the entire latent representation.
 
-OmniTrain v2.0 implements the **Conectoma** (Neural Circuit Policy) which structures the network into a strict 4-layer hierarchy.
+OmniTrain v2.1.0 implements the **Conectoma** (Neural Circuit Policy) which structures the network into a strict 4-layer hierarchy.
 
 ### 2.1 Structural Hierarchy & Sparsity (`NCPWiring`)
 The wiring is statically defined in `fusion_core.py` via the `NCPWiring` class. Instead of fully connected layers ($O(N^2)$ synapses), the system uses fixed, randomly initialized probability masks registered as PyTorch `buffers` (meaning they are saved in the `.omni` checkpoint but ignored by the `Adam` optimizer).
@@ -156,4 +156,4 @@ Understanding the precise flow of dimensions is critical for debugging the frame
 *   `diagnostics.py`: Instantiates a mock `LiquidFusionCore` and executes `torch.autograd` explicitly to compute input saliency without running a full training loop.
 
 ## 8. Conclusion
-The OmniTrain Conectoma v2.0 framework represents a definitive shift away from standard deep learning practices. By forcing information through sparse biological bottlenecks inspired by *C. elegans*, and governing temporal dynamics with ODE solvers derived from MIT's Liquid Networks, the system enforces interpretability, extreme efficiency, and safety at an architectural level.
+The OmniTrain Conectoma v2.1.0 framework represents a definitive shift away from standard deep learning practices. By forcing information through sparse biological bottlenecks inspired by *C. elegans*, and governing temporal dynamics with ODE solvers derived from MIT's Liquid Networks, the system enforces interpretability, extreme efficiency, and safety at an architectural level.

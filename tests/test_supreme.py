@@ -81,7 +81,13 @@ def run_supreme_audit():
         sensor_readings = torch.tensor([[0.05]])
         h_x = torch.randn(1, 1, 64)
         result = shield(h_x, sensor_readings)
-        print_test("Safety Shield Emergency Override", (result['action'] == 0).all().item())
+        
+        # FIX #76: Validate against dynamic emergency action
+        action_match = torch.allclose(result['action'], shield.emergency_action.expand(1, -1))
+        print_test("Safety Shield Emergency Override", result['tier'] == 1 and action_match)
+        
+        # FIX #77: Conectoma Connectivity Audit
+        print_test("Conectoma Island Prevention", (core.brain.sens_inter_mask.sum(dim=1) > 0).all().item())
         
     except Exception as e:
         print_test("Safety Audit", False, str(e))
@@ -100,11 +106,23 @@ def run_supreme_audit():
                 'gps': torch.randn(2, 4, 2)
             },
             'dt': torch.ones(2, 4),
+            'hw_sensors': torch.randn(2, 4, 1),
             'targets': {'drive': torch.randn(2, 4, 2)}
         }
         
         metrics = trainer._train_epoch([batch])
-        print_test("Training Backprop (Gradient Flow)", metrics['policy'] >= 0)
+        
+        # FIX #V-1: Verify that gradients actually flow and are not NaN
+        has_valid_grads = True
+        grad_count = 0
+        for p in core.parameters():
+            if p.requires_grad:
+                if p.grad is None or torch.isnan(p.grad).any():
+                    has_valid_grads = False
+                    break
+                grad_count += 1
+                
+        print_test("Training Backprop (Gradient Flow)", metrics['policy'] >= 0 and has_valid_grads and grad_count > 0)
         
     except Exception as e:
         traceback.print_exc()

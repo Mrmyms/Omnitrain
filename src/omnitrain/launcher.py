@@ -27,14 +27,17 @@ def parse_and_launch(yaml_path: str):
     d_model = model_cfg.get('d_model', 512)
     n_latents = model_cfg.get('n_latents', 128)
 
-    console.print(f"[white]INFO[/] FusionCore: d={d_model}, latents={n_latents}")
+    console.print(f"[white]INFO[/] LiquidFusionCore: d={d_model}, latents={n_latents}")
     # Lazy import to avoid CUDA initialization in main process if not needed
-    from .fusion_core import FusionCore
-    model = FusionCore(n_latents=n_latents, d_model=d_model)
+    from .fusion_core import LiquidFusionCore
+    model = LiquidFusionCore(n_latents=n_latents, d_model=d_model, config=config)
     model.eval()
 
     # 3. Initialize Transport
-    bus = TokenBus(max_tokens=2048, create=True)
+    
+    
+    sid = config.get('transport', {}).get('session_id')
+    bus = TokenBus(max_tokens=1000, create=True, session_id=sid)
     write_ptr = multiprocessing.Value('i', 0)
 
     workers = []
@@ -49,7 +52,8 @@ def parse_and_launch(yaml_path: str):
             mod_name, cls_name = plugin_path.rsplit('.', 1)
             
             # Security: Whitelist allowed plugin sources to prevent arbitrary code execution
-            allowed_prefixes = ['omnitrain.', 'plugins', 'plugins_real', 'plugins_ros2']
+            
+            allowed_prefixes = ['omnitrain.']
             is_allowed = any(mod_name.startswith(p) for p in allowed_prefixes)
             
             if not is_allowed:

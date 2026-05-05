@@ -74,17 +74,22 @@ def run_chaos_overload():
                 for p in core.parameters():
                     if p.grad is not None:
                         p.grad.zero_()
-                # Detachamos el estado para simular Truncated BPTT real
+                # Detach the state for real Truncated BPTT simulation
+                # FIX #36: Recursive detach to handle nested states (e.g. Conectoma dicts or tuples)
+                def recursive_detach(obj):
+                    if isinstance(obj, torch.Tensor):
+                        return obj.detach()
+                    elif isinstance(obj, dict):
+                        return {k: recursive_detach(v) for k, v in obj.items()}
+                    elif isinstance(obj, tuple):
+                        return tuple(recursive_detach(v) for v in obj)
+                    return obj
+                
                 if core._last_mixer_state:
-                    core._last_mixer_state = (core._last_mixer_state[0].detach(), core._last_mixer_state[1].detach())
+                    core._last_mixer_state = recursive_detach(core._last_mixer_state)
                 
                 if core._last_brain_state:
-                    if isinstance(core._last_brain_state, dict):
-                        # Conectoma mode: dictionary of tensors
-                        core._last_brain_state = {k: v.detach() for k, v in core._last_brain_state.items()}
-                    elif isinstance(core._last_brain_state, tuple):
-                        # NCP mode: tuple of tensors
-                        core._last_brain_state = tuple(s.detach() for s in core._last_brain_state)
+                    core._last_brain_state = recursive_detach(core._last_brain_state)
 
                 
         except Exception as e:

@@ -41,7 +41,8 @@ class OmniDiagnostic:
             prev_state = torch.zeros(1, n_latents, d_model)
             
             # Forward pass
-            next_state = self.core(sample, dt, prev_latents=prev_state)
+            
+            next_state = self.core(sample, dt, modal_id=m_id, prev_latents=prev_state)
             
             # Target: sum of latent activations
             loss = next_state.abs().sum()
@@ -75,9 +76,10 @@ class OmniDiagnostic:
         vitality_scores = []
         for name, module in self.core.named_modules():
             # Check for BioLiquidCell or similar stateful cells
-            if hasattr(module, 'f1') and isinstance(module.f1, nn.Linear):
+            
+            if hasattr(module, 'ff1') and isinstance(module.ff1, nn.Linear):
                 with torch.no_grad():
-                    w_mean = module.f1.weight.abs().mean().item()
+                    w_mean = module.ff1.weight.abs().mean().item()
                     vitality_scores.append(w_mean)
         
         if not vitality_scores:

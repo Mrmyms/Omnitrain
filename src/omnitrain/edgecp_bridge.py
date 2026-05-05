@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(me
 
 class DualBrainRPC:
     """
-    Lightweight local RPC bridge simulating the Arduino Ventuno's
+    Lightweight local RPC bridge simulating the edgeCP's
     inter-processor communication (Qualcomm NPU <-> STM32 MCU).
     In production, this would be replaced by eRPC, ROS2 DDS, or ZeroMQ.
     """
@@ -44,7 +44,7 @@ class DualBrainRPC:
             return None
 
 
-class VentunoAIBrain:
+class EdgeCPAIBrain:
     """
     Runs on the Qualcomm Dragonwing IQ-8275 (NPU).
     Handles high-throughput vision and Liquid Neural Network inference.
@@ -75,18 +75,19 @@ class VentunoAIBrain:
             # 2. Check hardware telemetry from Action Brain
             telemetry = self.rpc.receive_telemetry()
             
-            # 3. Inference (Simulated LNN output)
-            # This represents the BioConectomaHub evaluating the environment
-            latent_decision = torch.randn(1, 2)  # e.g., [steering, throttle]
+            # 3. Inference (BioConectomaHub evaluating the environment)
+            
+            # In production, this would be: latents = self.core(dummy_vision, dt)
+            latents = torch.randn(1, 32, 64) # (B, N, D)
             confidence = 0.95
 
-            # 4. Send Intent to Action Brain
-            self.rpc.send_action_intent(latent_decision, confidence)
+            # 4. Send Intent (latents) to Action Brain for Safety Verification
+            self.rpc.send_action_intent(latents, confidence)
             
             time.sleep(1/30.0) # 30 Hz perception
 
 
-class VentunoActionBrain:
+class EdgeCPActionBrain:
     """
     Runs on the STM32H5 (MCU).
     Handles real-time determinism, OmniShield formal safety, and motor PWM/CAN-FD.
@@ -117,11 +118,12 @@ class VentunoActionBrain:
             intent = self.rpc.receive_action_intent(timeout=0.001)
             
             if intent is not None:
-                raw_command = intent["command"]
+                raw_latents = intent["command"]
                 
                 # 3. Apply Formal Safety Guard (ICNN Control Barrier Function)
-                # The Action Brain NEVER blindly trusts the AI Brain
-                safe_action_dict = self.shield(raw_command, hw_sensors)
+                
+                # The shield extracts state and projects actions.
+                safe_action_dict = self.shield(raw_latents, hw_sensors)
                 safe_command = safe_action_dict['action']
                 is_override = safe_action_dict['tier'] > 0
                 
@@ -141,7 +143,7 @@ class VentunoActionBrain:
 if __name__ == "__main__":
     from omnitrain.heads import RegressionHead
     
-    print("🚀 Starting Omni-Ventuno Dual-Brain Simulation")
+    print("🚀 Starting Omni-edgeCP Dual-Brain Simulation")
     
     rpc = DualBrainRPC()
     
@@ -150,8 +152,8 @@ if __name__ == "__main__":
     shield = OmniShieldGuard(action_head=head, d_model=64, state_dim=16, action_dim=2, num_hw_sensors=1)
     shield.set_hw_limits(torch.tensor([0.1]), torch.tensor([10.0])) # Prevent crashes
     
-    ai_brain = VentunoAIBrain(rpc)
-    action_brain = VentunoActionBrain(rpc, shield)
+    ai_brain = EdgeCPAIBrain(rpc)
+    action_brain = EdgeCPActionBrain(rpc, shield)
     
     action_brain.start()
     ai_brain.start()

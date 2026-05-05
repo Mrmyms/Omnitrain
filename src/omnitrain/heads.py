@@ -4,6 +4,10 @@ import torch.nn as nn
 
 class OutputHead(nn.Module):
     """Base class for OmniTrain output heads."""
+    def __init__(self):
+        super().__init__()
+        
+        self.metadata = {}
 
     def forward(self, x):
         # Global Average Pooling: flatten latents (Batch, N_latents, d_model) -> (Batch, d_model)

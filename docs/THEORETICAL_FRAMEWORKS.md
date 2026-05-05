@@ -7,12 +7,12 @@
 ## Abstract
 This document serves as the formal theoretical specification for the OmniTrain Conectoma architecture. We propose a unified, brain-inspired hierarchy that bridges the gap between high-frequency stochastic sensor data and provably safe actuation. By synthesizing **Closed-form Continuous-time (CfC)** neural dynamics with **Sparse Neural Circuit Policies (NCPs)** and **Bio-Conectoma Hubs**, OmniTrain achieves sub-millisecond latency, self-adaptation, and formal robustness in Out-Of-Distribution (OOD) environments.
 
-> **Implementation Status (v2.0.0):** The **Hub & Wall** hierarchy, **Isolated Sensory Modalities**, and **True Synaptic Sparsity (NCP Wiring)** are now 100% fully implemented and verified via Supreme Audit.
+> **Implementation Status (v2.1.0.0):** The **Hub & Wall** hierarchy, **Isolated Sensory Modalities**, and **True Synaptic Sparsity (NCP Wiring)** are now 100% fully implemented and verified via Supreme Audit.
 
 ---
 
 ## 1. The Bio-Conectoma: Hub & Wall Hierarchy
-OmniTrain v2.0 transitions from modular hubs to a structured "Conectoma" inspired by the neural architecture of *C. elegans*.
+OmniTrain v2.1.0 transitions from modular hubs to a structured "Conectoma" inspired by the neural architecture of *C. elegans*.
 
 ### 1.1 Isolated Sensory Hubs
 Instead of a global projection, every sensor modality is processed by an isolated **BioLiquid** module. This prevents "Information Pollution", where high-frequency noise from one sensor (e.g., IMU) could corrupt the latent representation of another (e.g., Lidar).
@@ -24,7 +24,7 @@ All sensory signals converge on a central recurrent "Wall". This layer uses **NC
 3.  **Inter -> Command**: Decision-making sparse layer.
 
 ### 1.3 Synaptic Consolidation (True Sparsity)
-Unlike traditional "dropout" or simulated sparsity, OmniTrain v2.0 implements **Synaptic Consolidation** using physical weight pruning. The neural paths are physically severed in memory, reducing the parameter search space and ensuring that gradients only flow through biologically viable routes.
+Unlike traditional "dropout" or simulated sparsity, OmniTrain v2.1.0 implements **Synaptic Consolidation** using physical weight pruning. The neural paths are physically severed in memory, reducing the parameter search space and ensuring that gradients only flow through biologically viable routes.
 
 ---
 

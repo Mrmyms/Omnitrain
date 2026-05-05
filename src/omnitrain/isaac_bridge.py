@@ -32,7 +32,8 @@ This bridge handles:
 class IsaacOmniBridge:
     def __init__(self, session_id="isaac_train", robot_name="omni_robot"):
         # Optimized for 16GB RAM: Single bus instance, minimal buffering
-        self.bus = TokenBus(max_tokens=500, token_dim=1024, session_id=session_id)
+        
+        self.bus = TokenBus(max_tokens=500, token_dim=512, session_id=session_id)
         self.world = World(stage_units_in_meters=1.0)
         self.robot_name = robot_name
         self.robot = None
@@ -98,7 +99,8 @@ class IsaacOmniBridge:
                 timestamp = time.time()
                 
                 # Publish to the bus for the Liquid Core to consume
-                self.bus.publish(raw_lidar, timestamp, modal_id="rtx_lidar")
+                
+                self.bus.publish(raw_lidar, timestamp, modal_id="lidar")
             except Exception as e:
                 print(f"⚠️ Sensor Error: {e}")
 

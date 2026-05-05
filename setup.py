@@ -11,7 +11,7 @@ ext_modules = [
 
 setup(
     name="omnitrain",
-    version="1.0.0",
+    version="2.1.0",
     ext_modules=ext_modules,
     install_requires=["numpy", "torch", "rich", "pyyaml", "prompt_toolkit>=3.0"],
     entry_points={

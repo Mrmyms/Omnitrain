@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# OmniTrain v1.1.0 - Industrial Setup Script
+# OmniTrain v2.1.0 - Industrial Setup Script
 # "Fuse Everything. Trust Nothing. Verify Formally."
 
 set -e
@@ -44,8 +44,8 @@ echo -e "\n${BLUE}[3/4]${NC} Installing dependencies..."
 ./.venv/bin/python3 -m pip install -e .
 
 echo -e "\n${BLUE}[4/4]${NC} Industrialization Audit..."
-if ./.venv/bin/python3 src/omnitrain/test_industrialization.py; then
-    echo -e "\n  ${GREEN}Audit Passed: 21/21 Tests Successful.${NC}"
+if ./.venv/bin/python3 tests/test_supreme.py; then
+    echo -e "\n  ${GREEN}Audit Passed: Supreme Verification Successful.${NC}"
 else
     echo -e "\n  ${RED}Audit Failed: Please check the logs above.${NC}"
     exit 1

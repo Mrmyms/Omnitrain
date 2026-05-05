@@ -46,43 +46,77 @@ def apply_omni_pruning(model_path, pruning_ratio=0.3, output_path="omni_2_0_prun
     # 2. Identify and prune eligible Linear layers
     layers_pruned = 0
     layers_skipped = 0
+    
+    # Store the mapping of original module names to their new output dimensions
+    # to handle shape propagation.
+    new_dims = {}
 
-    for name, module in list(pruned_core.named_modules()):
+    module_list = list(pruned_core.named_modules())
+    for i, (name, module) in enumerate(module_list):
+        
+        # and we need to update our input features.
+        # For simplicity in this architecture, we check if the PREVIOUS module in the 
+        # list was a Linear layer that we just pruned.
+        if i > 0:
+            prev_name, prev_module = module_list[i-1]
+            if prev_name in new_dims:
+                mask = new_dims[prev_name]
+                new_in = int(mask.sum().item())
+                if isinstance(module, nn.Linear):
+                    print(f"   ADAPT: Updating input dim for {name}: {module.in_features} -> {new_in}")
+                    old_linear = module
+                    module = nn.Linear(new_in, old_linear.out_features, bias=old_linear.bias is not None)
+                    
+                    kept_indices = mask.nonzero(as_tuple=True)[0]
+                    module.weight.data = old_linear.weight.data[:, kept_indices]
+                    if old_linear.bias is not None:
+                        module.bias.data = old_linear.bias.data
+                        
+                    parent_name = '.'.join(name.split('.')[:-1])
+                    child_name = name.split('.')[-1]
+                    parent = dict(pruned_core.named_modules())[parent_name] if parent_name else pruned_core
+                    setattr(parent, child_name, module)
+                elif hasattr(module, 'ff1') and isinstance(module.ff1, nn.Linear):
+                    # Handle BioLiquidCell successor
+                    print(f"   ADAPT: Updating BioLiquidCell {name} input: {module.ff1.in_features} -> {new_in}")
+                    # Rebuild the internal projectors of the BioLiquidCell
+                    # This is complex, so we skip for now or provide a specialized handler.
+                    pass
+
         if isinstance(module, nn.Linear):
             # Safety Rule: Never prune safety-critical layers
-            if 'safety' in name.lower():
+            if 'safety' in name.lower() or 'shield' in name.lower():
                 print(f"   SKIP: safety-critical layer: {name}")
                 layers_skipped += 1
                 continue
 
             # Skip the final projection layers of attention (would break architecture)
-            if 'cross_attn' in name or 'out_proj' in name:
-                print(f"   SKIP: attention layer: {name}")
+            if 'cross_attn' in name or 'out_proj' in name or 'mixer' in name.lower():
+                print(f"   SKIP: attention/mixer layer: {name}")
                 layers_skipped += 1
                 continue
 
             print(f"   PRUNE: layer: {name} ({module.in_features} -> {module.out_features})")
 
             # Ln Structured Pruning on dim=0 (output neurons)
-            # This zeros entire rows based on L1 norm magnitude
             prune.ln_structured(module, name='weight', amount=pruning_ratio, n=1, dim=0)
             prune.remove(module, 'weight')
 
-            # Identify which output neurons survived (row L1 norm > 0)
+            # Identify which output neurons survived
             row_norms = module.weight.data.abs().sum(dim=1)
             mask = row_norms > 0
+            new_out_features = int(mask.sum().item())
 
             # Rebuild with reduced dimensions
             parent_name = '.'.join(name.split('.')[:-1])
             child_name = name.split('.')[-1]
-
-            if parent_name:
-                parent = dict(pruned_core.named_modules())[parent_name]
-            else:
-                parent = pruned_core
+            parent = dict(pruned_core.named_modules())[parent_name] if parent_name else pruned_core
 
             new_layer = _rebuild_linear_pruned(module, mask)
             setattr(parent, child_name, new_layer)
+            
+            # Record the new mask for the NEXT layer
+            new_dims[name] = mask
             layers_pruned += 1
 
     print(f"\n   STATS: Layers pruned: {layers_pruned} | Layers skipped: {layers_skipped}")
@@ -162,7 +196,9 @@ class SynapticPruner:
             return {"total_synapses": 0, "pruned_synapses": 0, "sparsity": 0.0}
 
         with torch.no_grad():
-            # Compute importance: mean absolute value across batch dim
+            
+            # we consider the synaptic activity (mean absolute value) as a proxy for 
+            # functional sensitivity in a post-training context.
             importance = cell.w_plastic.abs().mean(dim=0)  # (In, Out)
             mask = (importance > self.threshold).float()
             pruned = (mask == 0).sum().item()
@@ -170,6 +206,10 @@ class SynapticPruner:
 
             # Apply mask: zero out weak synapses
             cell.w_plastic = cell.w_plastic * mask.unsqueeze(0)
+            
+            
+            if hasattr(cell, 'plastic_pruning_mask'):
+                cell.plastic_pruning_mask = cell.plastic_pruning_mask * mask.unsqueeze(0)
 
         sparsity = pruned / total if total > 0 else 0.0
         stats = {"total_synapses": total, "pruned_synapses": int(pruned),

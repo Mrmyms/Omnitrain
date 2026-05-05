@@ -11,7 +11,7 @@ class ModalityPlugin(abc.ABC):
     Implements the lifecycle: Read -> Encode -> Publish.
     """
 
-    def __init__(self, bus: Any, modal_id: str, frequency_hz: float, write_ptr: Optional[Any] = None):
+    def __init__(self, bus: Any, modal_id: str, frequency_hz: float, write_ptr: Optional[Any] = None, **kwargs):
         self.bus = bus
         self.modal_id = modal_id
         self.frequency_hz = frequency_hz

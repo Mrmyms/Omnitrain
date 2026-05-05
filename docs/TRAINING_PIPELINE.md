@@ -25,7 +25,7 @@ La ventaja principal de las LNN es su resiliencia natural a condiciones fuera de
 ### Fase 4: Estabilidad Lagrangiana (Formal Safety)
 Pulido final del modelo con garantías de seguridad matemática.
 *   **Lagrangian Dual Update (v2.1):** Se utiliza un optimizador primal-dual para ajustar el peso de la seguridad. Las actualizaciones del multiplicador de Lagrange ($\lambda$) se realizan **por secuencia**, eliminando las oscilaciones violentas de versiones anteriores y logrando una política de seguridad mucho más estable.
-*   **OmniShield:** Si la red propone una acción peligrosa, el escudo (ICNN) proyecta la acción a la zona segura mediante una optimización de proyección cuadrática (QP).
+*   **OmniShield (RK4 Consistency):** Garantía de paridad matemática entre entrenamiento e inferencia mediante el uso de integración Runge-Kutta 4 en todos los niveles del escudo.
 
 ### Fase 5: Consolidación Sináptica (Structured Pruning)
 Optimización post-entrenamiento para hardware de bajo consumo (Edge Computing).

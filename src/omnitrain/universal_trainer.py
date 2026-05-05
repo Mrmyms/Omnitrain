@@ -50,28 +50,25 @@ class LagrangianSafetyController:
         lambda_min: float = 0.01,
         lambda_max: float = 10.0,
     ):
-        self.lam = init_lambda
+        
+        self.lam = torch.tensor(init_lambda, dtype=torch.float32)
         self.lr = lr
         self.lambda_min = lambda_min
         self.lambda_max = lambda_max
 
-    def update(self, h_x_mean: float) -> float:
+    def update(self, h_x_mean: torch.Tensor) -> torch.Tensor:
         """
-        Update λ based on current mean barrier value.
-
-        Args:
-            h_x_mean: Mean h(x) across the batch. Negative = violation.
-        Returns:
-            Updated λ (the new barrier weight).
+        Update λ based on current mean barrier value without CPU sync.
         """
-        # Constraint violation: how much are we below h(x) = 0?
-        violation = max(0.0, -h_x_mean)
-        self.lam = self.lam + self.lr * violation
-        self.lam = float(max(self.lambda_min, min(self.lambda_max, self.lam)))
+        if self.lam.device != h_x_mean.device:
+            self.lam = self.lam.to(h_x_mean.device)
+            
+        violation = torch.clamp(-h_x_mean, min=0.0)
+        self.lam = torch.clamp(self.lam + self.lr * violation, min=self.lambda_min, max=self.lambda_max)
         return self.lam
 
     @property
-    def value(self) -> float:
+    def value(self) -> torch.Tensor:
         return self.lam
 
 
@@ -95,17 +92,28 @@ class UniversalTrainer:
         self.config = config
         self.lr = learning_rate
 
+        
+        # (e.g., action head is shared between heads and shield)
         all_params = list(core.parameters()) + list(self.heads.parameters())
         all_params += list(shield.state_extractor.parameters())
         all_params += list(shield.barrier.parameters())
         all_params += list(shield.dynamics.parameters())
+        
+        unique_params = []
+        param_ids = set()
+        for p in all_params:
+            if id(p) not in param_ids:
+                unique_params.append(p)
+                param_ids.add(id(p))
 
-        self.optimizer = torch.optim.AdamW(all_params, lr=learning_rate)
+        
+        wd = config.get('training', {}).get('weight_decay', 1e-4)
+        self.optimizer = torch.optim.AdamW(unique_params, lr=learning_rate, weight_decay=wd)
         self.criterion_mse = nn.MSELoss()
         self.criterion_ce = nn.CrossEntropyLoss()
         self.history = {'loss': [], 'policy': [], 'safety': [], 'barrier': [], 'lambda': []}
 
-        # Fix #4: Adaptive safety weight via Lagrangian dual ascent
+        
         lagr_cfg = config.get('training', {}).get('lagrangian', {})
         self.lagrangian = LagrangianSafetyController(
             init_lambda=lagr_cfg.get('init_lambda', 0.1),
@@ -141,7 +149,11 @@ class UniversalTrainer:
             else:
                 heads[h_id] = ClassificationHead(h_cfg['num_classes'], m['d_model'])
 
-        action_head_key = next((k for k in heads if 'drive' in k or 'control' in k), list(heads.keys())[0])
+        
+        action_head_key = config.get('training', {}).get('action_head')
+        if not action_head_key:
+            action_head_key = next((k for k in heads if 'drive' in k or 'control' in k), list(heads.keys())[0])
+        
         shield = OmniShieldGuard.from_config(config, heads[action_head_key], d_model=m['d_model'])
 
         return cls(core, heads, shield, config, lr)
@@ -149,9 +161,10 @@ class UniversalTrainer:
     def _train_epoch(self, loader: DataLoader, barrier_weight: float = 1.0) -> Dict[str, float]:
         self.core.train()
         self.heads.train()
+        self.shield.train()
         metrics = {'policy': 0, 'safety': 0, 'barrier': 0, 'lambda': 0, 'count': 0}
 
-        # Fix #5: Persist state between batches for Stateful Training
+        
         # We initialize as None and let the core handle the first reset.
         self.core.reset_state()
 
@@ -163,7 +176,7 @@ class UniversalTrainer:
 
             B, T = batch['dt'].shape
             
-            # Fix #5: Conditional Reset
+            
             # Only reset if the batch indicates the start of a trajectory (is_start=True)
             # or if the batch size changed (e.g. last batch in loader).
             force_reset = batch.get('is_start', torch.tensor([False])).any().item()
@@ -218,38 +231,50 @@ class UniversalTrainer:
 
                         if isinstance(head, RegressionHead):
                             l = self.criterion_mse(pred, target)
-                            metrics['policy'] += l.item()
+                            metrics['policy'] += l.detach()
                         else:
                             l = self.criterion_ce(pred, target)
-                            metrics['safety'] += l.item()
+                            metrics['safety'] += l.detach()
                         step_loss += l
 
-                state = self.shield.state_extractor(current_step_latents)
-                h_x = self.shield.barrier(state)
+                
+                shield_out = self.shield(current_step_latents, sensor_batch=batch['hw_sensors'][:, t].to(device))
+                h_x = shield_out['h_x']
+                b_loss = shield_out['barrier_loss']
+                
                 sequence_h_x.append(h_x)
 
                 # Use current lagrangian value for loss, but don't update yet
-                b_loss = self.shield.barrier_loss(h_x) * self.lagrangian.value
-                metrics['barrier'] += b_loss.item()
-                metrics['lambda'] += self.lagrangian.value
-                step_loss += b_loss
+                
+                lagr_loss = b_loss * self.lagrangian.value * barrier_weight
+                metrics['barrier'] += lagr_loss.detach()
+                metrics['lambda'] += self.lagrangian.value.detach()
+                step_loss += lagr_loss
 
                 total_sequence_loss += step_loss
                 prev_step_latents = current_step_latents
 
-            # Fix #4: Update Lagrangian Dual once per sequence (Stabilization)
+            
+            if T > 1:
+                total_sequence_loss = total_sequence_loss / T
+
+            
             if sequence_h_x:
-                avg_h_x = torch.stack(sequence_h_x).mean().item()
+                avg_h_x = torch.stack(sequence_h_x).mean()
                 self.lagrangian.update(avg_h_x)
 
-            (total_sequence_loss / T).backward()
-            torch.nn.utils.clip_grad_norm_(self.optimizer.param_groups[0]['params'], 1.0)
+            total_sequence_loss.backward()
+            
+            for group in self.optimizer.param_groups:
+                torch.nn.utils.clip_grad_norm_(group['params'], 1.0)
+            
             self.optimizer.step()
             self.shield.barrier._ensure_icnn_constraints()  # Now a no-op, kept for compat
             metrics['count'] += 1
 
-        denom = max(1, metrics['count'])
-        return {k: v / denom for k, v in metrics.items() if k != 'count'}
+        
+        denom = max(1, metrics['count'] * T)
+        return {k: (v.item() if isinstance(v, torch.Tensor) else v) / denom for k, v in metrics.items() if k != 'count'}
 
     def fit(self, csv_path: str, epochs: Optional[int] = None, batch_size: Optional[int] = None) -> Generator[Dict, None, None]:
         """
@@ -277,8 +302,13 @@ class UniversalTrainer:
             
             bw = 0.1 if phase_info.chaos_level == 0 else (1.0 if phase_info.chaos_level == 1 else 2.0)
             
-            loader = DataLoader(ds, batch_size=batch_size, shuffle=True)
+            
+            loader = DataLoader(ds, batch_size=batch_size, shuffle=False)
             m = self._train_epoch(loader, barrier_weight=bw)
+            
+            
+            for k, v in m.items():
+                if k in self.history: self.history[k].append(v)
             
             yield {
                 'epoch': epoch + 1,
