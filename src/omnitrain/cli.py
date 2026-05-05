@@ -253,6 +253,14 @@ def handle_record(args):
 
 def handle_deploy(args):
     """Prepare for edge deployment (ONNX export)."""
+    target = "tensorrt"
+    if "--target" in args:
+        idx = args.index("--target")
+        if idx + 1 < len(args):
+            target = args[idx+1].lower()
+            args.pop(idx+1)
+            args.pop(idx)
+
     model_path = args[0] if args else None
     if not model_path:
         model_path = "SafeDelivery_Robot_final.omni"
@@ -262,16 +270,27 @@ def handle_deploy(args):
         return
 
     out_onnx = model_path.replace(".omni", ".onnx")
-    console.print(f"[bold color(117)]Deploying {model_path} to Edge...[/]")
+    console.print(f"[bold color(117)]Deploying {model_path} to Edge (Target: {target.upper()})...[/]")
     
     with console.status("[bold green]Stripping PyTorch hooks & Tracing Graph..."):
         exporter = OmniExporter()
         core, heads, config = exporter.load_as_inference(model_path)
-        exporter.export_to_onnx(core, heads, out_onnx)
-    
-    console.print(f"[bold green]OK: DEPLOYMENT PACKAGE READY[/bold green]")
-    console.print(f"  Artifact: [white]{out_onnx}[/]")
-    console.print(f"  Target: [cyan]OmniEngine C++ / TensorRT[/]")
+        
+        if target == "snpe":
+            out_dlc = model_path.replace(".omni", ".dlc")
+            exporter.export_for_qualcomm_snpe(core, heads, out_onnx)
+            success = exporter.convert_onnx_to_dlc(out_onnx, out_dlc)
+            if success:
+                console.print(f"\n[bold green]OK: DEPLOYMENT PACKAGE READY[/bold green]")
+                console.print(f"  Artifact: [white]{out_dlc}[/]")
+                console.print(f"  Target: [cyan]Qualcomm Snapdragon NPU (SNPE)[/]")
+            else:
+                console.print(f"\n[bold red]FAILED: SNPE DLC Conversion failed.[/bold red]")
+        else:
+            exporter.export_to_onnx(core, heads, out_onnx)
+            console.print(f"\n[bold green]OK: DEPLOYMENT PACKAGE READY[/bold green]")
+            console.print(f"  Artifact: [white]{out_onnx}[/]")
+            console.print(f"  Target: [cyan]OmniEngine C++ / TensorRT[/]")
 
 def handle_status(args):
     """Deep system health audit."""

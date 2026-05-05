@@ -151,6 +151,34 @@ class OmniExporter:
             opset_version=13
         )
 
+    def convert_onnx_to_dlc(self, onnx_path: str, dlc_path: str) -> bool:
+        """Invokes the SNPE SDK to convert the ONNX model to DLC format."""
+        import subprocess
+        import os
+        
+        if not os.path.exists(onnx_path):
+            logging.error(f"ONNX file not found: {onnx_path}")
+            return False
+            
+        cmd = [
+            "snpe-onnx-to-dlc",
+            "-i", onnx_path,
+            "-o", dlc_path
+        ]
+        
+        logging.info(f"Running Qualcomm SDK Converter: {' '.join(cmd)}")
+        try:
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            logging.info(f"✅ DLC successfully generated: {dlc_path}")
+            return True
+        except subprocess.CalledProcessError as e:
+            logging.error(f"❌ SNPE Conversion Failed. Is the SDK in your PATH?")
+            logging.error(e.stderr)
+            return False
+        except FileNotFoundError:
+            logging.error(f"❌ 'snpe-onnx-to-dlc' not found. Please install the Qualcomm Neural Processing SDK.")
+            return False
+
     def export_for_tensorrt(self, core, heads, export_path: str, max_batch: int = 16, max_tokens: int = 128):
         """Export with dynamic axes and optimization profile notes."""
         logging.info(f"🚀 Exporting DYNAMIC ONNX for TensorRT to {export_path}...")
