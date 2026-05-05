@@ -188,7 +188,7 @@ class ResidualDynamics(nn.Module):
 
 class OmniShieldGuard(nn.Module):
     """
-    OmniShield v2: Industrial 3-Tier Safety System.
+    OmniShield v2: 3-Tier Safety System.
 
     Tier 1 — HARDWARE FAILSAFE
         Vectorized hard-limit checks on raw sensor tensors.
@@ -473,7 +473,7 @@ class OmniShieldGuard(nn.Module):
             
             if hw_violated.any():
                 if torch.isinf(self.hw_min).any() or torch.isinf(self.hw_max).any():
-                    raise RuntimeError("Tier 1 active but hardware limits are +/-inf. Industrial deployment requires explicit limits.")
+                    raise RuntimeError("Tier 1 active but hardware limits are +/-inf. deployment requires explicit limits.")
                 telemetry.tier_activated = 1
         else:
             hw_violated = torch.zeros(batch_size, dtype=torch.bool, device=device)

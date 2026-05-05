@@ -1,5 +1,5 @@
-# OmniTrain v2.1.0: Conectoma Industrial
-### Bio-Inspired Sparse Neural Circuits & Formal Safety for Industrial Robotics
+# OmniTrain v2.1.0: Conectoma 
+### Bio-Inspired Sparse Neural Circuits & Formal Safety for Robotics
 
 ---
 
@@ -7,14 +7,14 @@ OmniTrain is a production-grade framework for building **Bio-Inspired Conectomas
 
 ---
 
-## What's New in v2.1 (Industrial Update)
+## What's New in v2.1 (Update)
 
 - **Training-Serving Parity**: Automatic capture and application of Z-Score normalization statistics. No more data degradation in deployment.
 - **Lagrangian Stability**: Stabilized primal-dual safety controller using per-sequence dual updates.
 - **Unified Fusion**: Optimized multi-sensor ingestion in `OmniStream` to prevent neural double-evolution.
 - **Kernel Robustness**: Enhanced CLI with kernel-level exception handling for 24/7 mission-critical operation.
 - **Hardware Failsafes**: Improved Tier 1 monitoring with worst-case coverage across all sensor dimensions.
-- **Industrial Stabilization**: Passed the Integrity 5-Problem Health Audit (v2.1) ensuring zero-leak SHM and RK4 dynamics parity.
+- **Stabilization**: Passed the Integrity 5-Problem Health Audit (v2.1) ensuring zero-leak SHM and RK4 dynamics parity.
 
 ---
 
@@ -30,7 +30,7 @@ chmod +x setup.sh
 
 ### 2. Launch the Console
 ```bash
-# Enter the interactive Industrial Dashboard
+# Enter the interactive Dashboard
 omni
 ```
 

@@ -58,7 +58,7 @@ def handle_train(args):
         for m in trainer.fit(csv_path):
             # Update Header
             layout["header"].update(Panel(
-                f"[bold arctic_blue]INDUSTRIAL NEURAL KERNEL[/] | Epoch {m['epoch']}/{m['total_epochs']} | Phase: {m['phase']}",
+                f"[bold arctic_blue]NEURAL KERNEL[/] | Epoch {m['epoch']}/{m['total_epochs']} | Phase: {m['phase']}",
                 border_style="color(117)",
                 subtitle=f"[dim]Noise: {m['noise']} | Stateful: ACTIVE[/]"
             ))
@@ -340,12 +340,12 @@ def handle_bus(args):
             bus.cleanup()
 
 def print_dashboard():
-    banner = "[bold arctic_blue]OMNITRAIN[/] v2.1.0 | [bold white]Industrial Robotics Framework[/]"
+    banner = "[bold arctic_blue]OMNITRAIN[/] v2.1.0 | [bold white]Robotics Framework[/]"
     
     stats_list = [
         "[bold cyan]/audit[/]      Deep Conectoma Integrity Audit",
         "[bold cyan]/connect[/]    Connectivity Hub & Sensor Setup",
-        "[bold cyan]/init[/]       Scaffold Industrial Environment",
+        "[bold cyan]/init[/]       Scaffold Environment",
         "[bold cyan]/train[/]      Stateful Lagrangian Training",
         "[bold cyan]/record[/]     High-Fidelity Event Capture",
         "[bold cyan]/diagnose[/]   Conectoma Saliency Audit",

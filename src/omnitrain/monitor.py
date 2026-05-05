@@ -12,7 +12,7 @@ from .telemetry import OmniHealthMonitor
 def generate_dashboard(bus: TokenBus, monitor: OmniHealthMonitor) -> Layout:
     layout = Layout()
     layout.split_column(Layout(name="head", size=3), Layout(name="body"), Layout(name="foot", size=5))
-    layout["head"].update(Panel("OmniTrain Industrial Fleet Monitor v4.0", style="bold cyan"))
+    layout["head"].update(Panel("OmniTrain Fleet Monitor v4.0", style="bold cyan"))
 
     now = time.time()
     tokens, _ = bus.get_since_index(max(0, bus.ptr_store[0] - 100))

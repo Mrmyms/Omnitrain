@@ -7,7 +7,7 @@ from .plugins import ModalityPlugin
 
 class ROS2BasePlugin(ModalityPlugin):
     """
-    Industrial ROS2 Modality Plugin.
+    ROS2 Modality Plugin.
     Uses Best-Effort QoS for high-frequency data and synchronized clock.
     """
     def __init__(self, bus, modal_id, frequency_hz, write_ptr, topic_name: str, msg_type: Any):

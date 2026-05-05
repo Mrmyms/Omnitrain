@@ -56,7 +56,7 @@ La arquitectura CfC elimina la necesidad de usar solvers de ODE (como Runge-Kutt
 ## 6. Recursos y Código
 *   **Repositorio Oficial:** [MIT-LCP/LTC](https://github.com/raminhasani/liquid_time_constant_networks)
 *   **Librería CfC:** [github.com/raminhasani/cfc](https://github.com/raminhasani/cfc)
-*   **Liquid AI:** Empresa spinoff del MIT que está industrializando estos modelos para despliegue masivo.
+*   **Liquid AI:** Empresa spinoff del MIT que está izando estos modelos para despliegue masivo.
 
 ---
 *Este documento es parte de la base de conocimiento de OmniTrain para la transición hacia arquitecturas de tiempo continuo.*

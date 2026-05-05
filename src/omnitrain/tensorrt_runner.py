@@ -3,7 +3,7 @@ import time
 import logging
 from typing import Tuple, Dict, Optional
 
-# Attempt to load industrial acceleration libraries
+# Attempt to load acceleration libraries
 try:
     import tensorrt as trt
     import pycuda.driver as cuda
@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(me
 
 class OmniTensorRTRunner:
     """
-    Industrial TensorRT Runner for OmniTrain.
+    TensorRT Runner for OmniTrain.
     
     Optimizations:
     - FIX #37: Async Stream Overlapping (Compute + Memory IO).

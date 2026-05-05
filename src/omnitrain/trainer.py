@@ -74,7 +74,7 @@ class LagrangianSafetyController:
 
 class Trainer:
     """
-    Industrial Universal Trainer for BioLiquid Networks.
+    Universal Trainer for BioLiquid Networks.
     Implements 3-Phase Curriculum with Gradient Synchronization.
     """
 

@@ -7,7 +7,7 @@
 namespace omni {
 
 /**
- * Industrial Safety Guard (Native C++ Port)
+ * Safety Guard (Native C++ Port)
  * 
  * Implements Tier 1 Hardware Failsafe logic.
  * Checks raw sensor readings against hard limits with microsecond latency.

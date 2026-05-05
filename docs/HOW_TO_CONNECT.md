@@ -75,7 +75,7 @@ plugin.run()
 
 ---
 
-## 2. Método Robótica Industrial (ROS 2)
+## 2. Método Robótica (ROS 2)
 El estándar para robots físicos (Humble/Iron/Jazzy). OmniTrain usa un patrón "Singleton" interno para el Nodo ROS 2, lo que significa que puedes crear decenas de plugins sin colisionar con el manejador de memoria `rclpy`.
 
 1. **Asegúrate de que ROS 2 esté en tu path** (`source /opt/ros/...`).

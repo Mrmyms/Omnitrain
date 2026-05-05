@@ -45,7 +45,7 @@ class TokenBus:
         self._shape_registry: Dict[str, int] = {}
 
         if HAS_CPP:
-            logging.info(f"[TokenBus] Industrial C++ Backend Active (SID: {self.sid})")
+            logging.info(f"[TokenBus] C++ Backend Active (SID: {self.sid})")
             self.backend = omni_bus_core.NativeTokenBus(max_tokens, token_dim, modal_id_len, self.sid, create)
         else:
             logging.info(f"[TokenBus] Standard Python Backend Active (SID: {self.sid})")

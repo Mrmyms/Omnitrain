@@ -10,7 +10,7 @@ from omnitrain.telemetry import OmniHealthMonitor
 def perform_health_check():
     print("-" * 50)
     print("  OMNITRAIN v2.1.0 PRODUCTION READY")
-    print("  Industrial Reliability & Formal Verification")
+    print("  Reliability & Formal Verification")
     print("-" * 50 + "\n")
 
     results = {"overall_status": "PASSED", "checks": []}

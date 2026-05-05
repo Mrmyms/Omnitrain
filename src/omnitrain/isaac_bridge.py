@@ -20,7 +20,7 @@ from omnitrain.token_bus import TokenBus
 from omnitrain.fusion_core import FusionCore
 
 """
-OmniTrain 4.5: Industrial Isaac Sim Bridge
+OmniTrain 4.5: Isaac Sim Bridge
 Hardware Target: NVIDIA RTX 5070 | 16GB RAM Optimization
 -------------------------------------------------------
 This bridge handles:
@@ -91,7 +91,7 @@ class IsaacOmniBridge:
             
             # 2. Extract REAL RTX Lidar Data
             # We fetch from the memory-mapped buffer if using RTX Lidar
-            # For this industrial version, we use the TokenBus to publish raw arrays
+            # For this version, we use the TokenBus to publish raw arrays
             try:
                 # Placeholder for Isaac Sim RTX Lidar buffer access
                 # In production, this pulls from the 'omni.isaac.sensor' buffer

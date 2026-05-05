@@ -21,14 +21,14 @@ class OmniCalibrationReader(CalibrationDataReader):
         return {name: item[i] for i, name in enumerate(self.input_names)}
 
 
-def quantize_omnitrain_industrial(
+def quantize_omnitrain_(
     input_model="robot_final.onnx", 
     output_model="robot_quant.onnx", 
     target="default",
     calibration_data=None
 ):
     """
-    Industrial-grade quantization for OmniTrain.
+    -grade quantization for OmniTrain.
     - default: PTQ Static Quantization (INT8)
     - nf4: 4-bit NormalFloat quantization (requires specialized runtime)
     - fp16: Half-precision folding for TensorRT
@@ -38,7 +38,7 @@ def quantize_omnitrain_industrial(
         logging.error(f"Base model not found: {input_model}")
         return
 
-    logging.info(f"Starting Industrial Quantization on {input_model} (Target: {target})...")
+    logging.info(f"Starting Quantization on {input_model} (Target: {target})...")
 
     model = onnx.load(input_model)
     inferred_model = onnx.shape_inference.infer_shapes(model)
@@ -113,4 +113,4 @@ if __name__ == "__main__":
             for _ in range(10)
         ]
         
-    quantize_omnitrain_industrial(args.input, "robot_quant.onnx", args.target, cal_data)
+    quantize_omnitrain_(args.input, "robot_quant.onnx", args.target, cal_data)

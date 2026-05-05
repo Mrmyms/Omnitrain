@@ -29,7 +29,7 @@ Unlike traditional "dropout" or simulated sparsity, OmniTrain v2.1.0 implements 
 ---
 
 ## 2. Formal Safety: Input Convex Neural Networks (ICNN)
-To ensure industrial-grade reliability, OmniTrain utilizes **OmniShield v2**, a safety layer based on the theory of **Control Barrier Functions (CBF)** learned through ICNNs.
+To ensure -grade reliability, OmniTrain utilizes **OmniShield v2**, a safety layer based on the theory of **Control Barrier Functions (CBF)** learned through ICNNs.
 
 ### 2.1 Theoretical Guarantee
 An ICNN ensures that the function $f(u)$ is convex with respect to the control input $u$. 

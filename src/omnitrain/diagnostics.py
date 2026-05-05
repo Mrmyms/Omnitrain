@@ -7,7 +7,7 @@ from .exporter import OmniExporter
 
 class OmniDiagnostic:
     """
-    Industrial Sensitivity Analysis for BioLiquid Networks.
+    Sensitivity Analysis for BioLiquid Networks.
     Identifies which sensors are actually driving the robot's decisions.
     """
 

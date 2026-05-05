@@ -18,7 +18,7 @@ except ImportError:
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 
 class OmniQoS:
-    """Industrial QoS profiles for Robotics."""
+    """QoS profiles for Robotics."""
     RELIABLE = QoSProfile(
         reliability=ReliabilityPolicy.RELIABLE,
         history=HistoryPolicy.KEEP_LAST,
@@ -42,7 +42,7 @@ class OmniClock:
 
 class OmniROS2Node:
     """
-    Industrial ROS2 Node wrapper for OmniTrain.
+    ROS2 Node wrapper for OmniTrain.
     Ensures zero-latency callback dispatch and correct QoS handling.
     """
     _instance = None
@@ -76,7 +76,7 @@ class OmniROS2Node:
         self.spin_thread = None
         self.running = False
         self._initialized = True
-        logging.info(f"🤖 ROS2 Node '{node_name}' initialized with Industrial QoS.")
+        logging.info(f"🤖 ROS2 Node '{node_name}' initialized with QoS.")
 
     def start_spinning(self):
         """Starts the ROS2 executor in a background thread."""
@@ -98,7 +98,7 @@ class OmniROS2Node:
             self.running = False
 
     def create_subscription(self, msg_type: Any, topic: str, callback: Callable, qos: Optional[QoSProfile] = None):
-        """Wrapper with industrial QoS support."""
+        """Wrapper with QoS support."""
         profile = qos or OmniQoS.RELIABLE
         return self.node.create_subscription(msg_type, topic, callback, profile)
 

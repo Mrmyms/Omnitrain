@@ -1,10 +1,10 @@
-# Pipeline de Entrenamiento Industrial: Conectoma v2.1 (Industrial)
+# Pipeline de Entrenamiento : Conectoma v2.1 ()
 
-Este documento define la metodología oficial recomendada para entrenar sistemas robóticos autónomos impulsados por **Liquid Neural Networks (LNN)** y arquitecturas **Closed-form Continuous-time (CfC)**. La metodología v2.1 introduce estabilidad de grado industrial para despliegues críticos.
+Este documento define la metodología oficial recomendada para entrenar sistemas robóticos autónomos impulsados por **Liquid Neural Networks (LNN)** y arquitecturas **Closed-form Continuous-time (CfC)**. La metodología v2.1 introduce estabilidad de grado para despliegues críticos.
 
 ---
 
-## Metodología de Entrenamiento (Industrial Curriculum)
+## Metodología de Entrenamiento (Curriculum)
 
 Entrenar una LNN requiere un enfoque radicalmente distinto al de un Transformer estático, ya que las derivadas fluyen a través del tiempo continuo ($\Delta t$). Este pipeline integra estabilidad formal y paridad de datos.
 
@@ -40,4 +40,4 @@ Optimización post-entrenamiento para hardware de bajo consumo (Edge Computing).
 3.  **Seguridad Formal:** ICNN-based Control Barrier Functions (2021).
 
 ---
-*OmniTrain Project Documentation - 2026 (v2.1 Industrial)*
+*OmniTrain Project Documentation - 2026 (v2.1 )*

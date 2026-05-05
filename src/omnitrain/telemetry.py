@@ -11,7 +11,7 @@ from typing import Dict, Any
 
 class ProtoStreamLogger:
     """
-    Industrial Binary Telemetry Logger.
+    Binary Telemetry Logger.
     Uses a compact format: [Timestamp:8][ModalityID_Len:1][ModalityID:N][Dim:4][Data:Dim*4]
     Compressed with Zstd for 10x bandwidth savings.
     """

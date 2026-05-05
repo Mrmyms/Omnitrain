@@ -11,7 +11,7 @@ console = Console()
 
 class OmniRecorder:
     """
-    Industrial OmniTrain Recorder (High-Efficiency).
+    OmniTrain Recorder (High-Efficiency).
     Uses pointer-based retrieval to avoid O(N) memory scans.
     Operates in 'Event-Stream' mode: captures every state change without data loss.
     """
@@ -75,7 +75,7 @@ class OmniRecorder:
 
         file_exists = os.path.exists(output_path)
         
-        console.print(f"[bold arctic_blue]INDUSTRIAL RECORDER (EVENT-MODE)[/bold arctic_blue] -> [white]{output_path}[/white]")
+        console.print(f"[bold arctic_blue]RECORDER (EVENT-MODE)[/bold arctic_blue] -> [white]{output_path}[/white]")
         
         # Pre-calculate mapping for faster row building
         input_info = []

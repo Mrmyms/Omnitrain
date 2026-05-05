@@ -11,7 +11,7 @@ class OmniLogDataset(Dataset):
     """
     High-Fidelity OmniTrain Dataset.
     Supports multi-column sensor data (vision_0, vision_1, ...) and
-    adaptive normalization for industrial robotics.
+    adaptive normalization for robotics.
     """
 
     def __init__(
