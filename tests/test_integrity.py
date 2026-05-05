@@ -1,5 +1,5 @@
 """
-OMNITRAIN SUPREME VERIFICATION TEST (v2.4) - FULL DEBUG
+OMNITRAIN INTEGRITY VERIFICATION TEST (v2.4) - FULL DEBUG
 """
 import sys
 import os
@@ -28,9 +28,9 @@ def print_test(name, success, detail=""):
     if detail and not success:
         print(f"     └─ {detail}")
 
-def run_supreme_audit():
+def run_integrity_audit():
     print("\n" + "="*60)
-    print("🚀 OMNITRAIN SUPREME INTEGRITY AUDIT")
+    print("🚀 OMNITRAIN INTEGRITY INTEGRITY AUDIT")
     print("="*60)
 
     # 1. ARCHITECTURE AUDIT (The Wall)
@@ -129,8 +129,8 @@ def run_supreme_audit():
         print_test("Training Audit", False, str(e))
 
     print("\n" + "="*60)
-    print("🏆 SUPREME AUDIT COMPLETE")
+    print("🏆 INTEGRITY AUDIT COMPLETE")
     print("="*60 + "\n")
 
 if __name__ == "__main__":
-    run_supreme_audit()
+    run_integrity_audit()

@@ -7,7 +7,7 @@
 ## Abstract
 This document serves as the formal theoretical specification for the OmniTrain Conectoma architecture. We propose a unified, brain-inspired hierarchy that bridges the gap between high-frequency stochastic sensor data and provably safe actuation. By synthesizing **Closed-form Continuous-time (CfC)** neural dynamics with **Sparse Neural Circuit Policies (NCPs)** and **Bio-Conectoma Hubs**, OmniTrain achieves sub-millisecond latency, self-adaptation, and formal robustness in Out-Of-Distribution (OOD) environments.
 
-> **Implementation Status (v2.1.0.0):** The **Hub & Wall** hierarchy, **Isolated Sensory Modalities**, and **True Synaptic Sparsity (NCP Wiring)** are now 100% fully implemented and verified via Supreme Audit.
+> **Implementation Status (v2.1.0.0):** The **Hub & Wall** hierarchy, **Isolated Sensory Modalities**, and **True Synaptic Sparsity (NCP Wiring)** are now 100% fully implemented and verified via Integrity Audit.
 
 ---
 

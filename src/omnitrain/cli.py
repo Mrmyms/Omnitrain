@@ -343,7 +343,7 @@ def print_dashboard():
     banner = "[bold arctic_blue]OMNITRAIN[/] v2.1.0 | [bold white]Industrial Robotics Framework[/]"
     
     stats_list = [
-        "[bold cyan]/godmode[/]    Deep Conectoma Integrity Audit",
+        "[bold cyan]/audit[/]      Deep Conectoma Integrity Audit",
         "[bold cyan]/connect[/]    Connectivity Hub & Sensor Setup",
         "[bold cyan]/init[/]       Scaffold Industrial Environment",
         "[bold cyan]/train[/]      Stateful Lagrangian Training",
@@ -370,8 +370,8 @@ def print_dashboard():
         padding=(1, 2)
     ))
 
-def handle_godmode(args):
-    """Supreme System Audit."""
+def handle_audit(args):
+    """System Integrity Audit."""
     console.print("\n[bold arctic_blue]INITIALIZING SYSTEM AUDIT[/bold arctic_blue]\n")
     with Progress(
         SpinnerColumn(),
@@ -422,8 +422,8 @@ def main():
         "/prune": handle_prune,
         "/bus": handle_bus,
         "/status": handle_status,
-        "/godmode": handle_godmode,
-        "/help": lambda args: console.print("/godmode, /connect, /init, /train, /record, /diagnose, /deploy, /prune, /bus, /status, /exit"),
+        "/audit": handle_audit,
+        "/help": lambda args: console.print("/audit, /connect, /init, /train, /record, /diagnose, /deploy, /prune, /bus, /status, /exit"),
 
         "/clear": lambda _: os.system('clear' if os.name == 'posix' else 'cls'),
         "/exit": lambda _: sys.exit(0)

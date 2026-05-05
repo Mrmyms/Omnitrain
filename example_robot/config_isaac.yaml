@@ -1,6 +1,6 @@
-# OmniTrain 4.0 "Supreme Giga" Configuration
+# OmniTrain v2.1.0 Industrial Configuration
 project: "Isaac_Sim_Robot"
-version: "4.0-giga"
+version: "2.1.0"
 
 # Scaled AI Backbone for RTX 5070 GPU
 model:

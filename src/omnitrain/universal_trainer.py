@@ -171,7 +171,7 @@ class UniversalTrainer:
         for batch in loader:
             self.optimizer.zero_grad()
 
-            # Explicit Device Mapping (Godmode fix)
+            # Explicit Device Mapping
             device = next(self.core.parameters()).device
 
             B, T = batch['dt'].shape

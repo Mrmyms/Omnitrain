@@ -6,7 +6,7 @@ from omnitrain.fusion_core import LiquidFusionCore
 
 def run_chaos_overload():
     print("\n" + "!"*60)
-    print("🔥 OMNITRAIN CHAOS OVERLOAD: SUPREME STRESS TEST")
+    print("🔥 OMNITRAIN CHAOS OVERLOAD: INTEGRITY STRESS TEST")
     print("!"*60 + "\n")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -111,7 +111,7 @@ def run_chaos_overload():
     print(f"Explosion Events   : {explosion_count} (Goal: 0)")
     
     if nan_count == 0 and explosion_count == 0:
-        print("\n🏆 SUPREME INTEGRITY VERIFIED: SignalSpatialMixer is bulletproof.")
+        print("\n🏆 INTEGRITY INTEGRITY VERIFIED: SignalSpatialMixer is bulletproof.")
     else:
         print("\n⚠️ STABILITY WARNING: System saturated under extreme stress.")
     print("="*60 + "\n")
