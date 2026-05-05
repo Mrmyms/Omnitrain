@@ -73,7 +73,7 @@ class OmniLogDataset(Dataset):
         self.raw_data_store = {}
 
         # Parse and Normalize inputs (Robust Z-Score Normalization)
-        # Fix applied (v2.1): replaced static (x - min)/(max - min) with
+        
         # z-score + ±5σ clip. This ensures OOD sensor readings (noise, spikes)
         # never saturate CfC tanh/softplus activations.
         for mapping in self.input_mappings:
@@ -163,7 +163,7 @@ class OmniLogDataset(Dataset):
                 if self.noise_level >= 1:
                     t = SignalCorruptor.apply_dropout(t, drop_prob=0.1, fill_value=1.0)
                 if self.noise_level >= 2:
-                    # Fix: Removed 0.0-1.0 clamp as 't' is Z-score normalized [-5, 5]
+                    
                     t = SignalCorruptor.apply_gaussian_noise(t, std=0.05)
                 
             batch['inputs'][m_id] = t

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "omnitrain"
 version = "2.1.0"
-description = "Industrial Multimodal AI Framework"
+description = "Multimodal AI Framework for Robotics"
 dependencies = [
     "numpy",
     "torch",

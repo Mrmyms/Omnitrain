@@ -19,7 +19,7 @@ console = Console()
 
 
 # ─────────────────────────────────────────────────────────────────────
-#  LagrangianSafetyController: Adaptive Safety Weight (Fix #4)
+#  LagrangianSafetyController: Adaptive Safety Weight
 # ─────────────────────────────────────────────────────────────────────
 
 class LagrangianSafetyController:

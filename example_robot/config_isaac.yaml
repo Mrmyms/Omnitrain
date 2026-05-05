@@ -1,10 +1,10 @@
-# OmniTrain v2.1.0 Industrial Configuration
+# OmniTrain v2.1.0 Standard Configuration
 project: "Isaac_Sim_Robot"
 version: "2.1.0"
 
 # Scaled AI Backbone for RTX 5070 GPU
 model:
-  d_model: 1024       # Giga-depth for the 5070
+  d_model: 1024       # High-depth for the 5070
   n_latents: 128      # Expanded memory
   num_layers: 12      # Deep reasoning
   n_heads: 16         # High-resolution spatial attention

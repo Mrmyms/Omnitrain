@@ -429,7 +429,7 @@ class OmniStream:
             detected = self.detector.detect(data, modal_id)
         
         # ── 3. Runtime Normalization ──
-        # Fix: Apply Z-Score normalization if stats are available in core.config
+        
         norm_tensor = self._apply_normalization(detected.tensor, detected.modal_id)
 
         # ── 4. Route through the core ──
@@ -504,7 +504,7 @@ class OmniStream:
             detected = self.detector.detect(value, modal_id=key)
             detected_list.append(detected)
             
-            # Fix: Apply Z-Score normalization for multi-sensor bundles
+            
             norm_tensor = self._apply_normalization(detected.tensor, detected.modal_id)
             sensor_dict[detected.modal_id] = norm_tensor
             

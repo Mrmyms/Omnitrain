@@ -19,9 +19,9 @@ class OmniTensorRTRunner:
     TensorRT Runner for OmniTrain.
     
     Optimizations:
-    - FIX #37: Async Stream Overlapping (Compute + Memory IO).
-    - FIX #35: Zero-Copy Unified Memory for NVIDIA Jetson.
-    - FIX #38: KV-Cache/Recurrent State persistence across frames.
+    - Async Stream Overlapping (Compute + Memory IO).
+    - Zero-Copy Unified Memory for NVIDIA Jetson.
+    - KV-Cache/Recurrent State persistence across frames.
     """
     
     def __init__(self, engine_path: str, max_batch: int = 1, max_tokens: int = 128, d_model: int = 256):

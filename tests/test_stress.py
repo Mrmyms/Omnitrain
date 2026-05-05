@@ -75,7 +75,7 @@ def run_noise_overload():
                     if p.grad is not None:
                         p.grad.zero_()
                 # Detach the state for real Truncated BPTT simulation
-                # FIX #36: Recursive detach to handle nested states (e.g. Conectoma dicts or tuples)
+                 Recursive detach to handle nested states (e.g. Conectoma dicts or tuples)
                 def recursive_detach(obj):
                     if isinstance(obj, torch.Tensor):
                         return obj.detach()

@@ -1,5 +1,5 @@
 # OmniTrain: Theoretical Foundations & Architectural White Paper
-**Version 2.0.0** | **Conectoma Specification**
+**Version 2.1.0** | **Conectoma Specification**
 *Authored by the OmniTrain Research Group*
 
 ---
@@ -29,7 +29,7 @@ Unlike traditional "dropout" or simulated sparsity, OmniTrain v2.1.0 implements 
 ---
 
 ## 2. Formal Safety: Input Convex Neural Networks (ICNN)
-To ensure -grade reliability, OmniTrain utilizes **OmniShield v2**, a safety layer based on the theory of **Control Barrier Functions (CBF)** learned through ICNNs.
+To ensure high-grade reliability, OmniTrain utilizes **OmniShield v2**, a safety layer based on the theory of **Control Barrier Functions (CBF)** learned through ICNNs.
 
 ### 2.1 Theoretical Guarantee
 An ICNN ensures that the function $f(u)$ is convex with respect to the control input $u$. 

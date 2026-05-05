@@ -106,7 +106,7 @@ class IsaacOmniBridge:
 
             # 3. Read back Action from Bus (Closed-loop)
             # This is where the Liquid Core's output is retrieved
-            # Fix: Use time-based windowing for the last 100ms of actions
+            
             now = time.time()
             actions_window = self.bus.get_window(now - 0.1, now)
             

@@ -349,7 +349,7 @@ class TokenBus:
     @staticmethod
     def force_cleanup_zombies():
         """
-        FIX #22: Robust SHM Reaper. Checks active PIDs and unlinks orphaned segments.
+        Robust SHM Reaper. Checks active PIDs and unlinks orphaned segments.
         """
         if HAS_CPP: return
         

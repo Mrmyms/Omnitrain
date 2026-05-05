@@ -335,7 +335,7 @@ class OmniShieldGuard(nn.Module):
         """
         Differentiable CBF projection.
 
-        FIX #11: Using Vectorized Jacobian for Inference (torch.func).
+        Using Vectorized Jacobian for Inference (torch.func).
         This eliminates the O(N) loop over action dimensions, enabling
         sub-millisecond safety verification for high-dimensional robots.
         """
@@ -389,7 +389,7 @@ class OmniShieldGuard(nn.Module):
         # Robust projection even when the gradient is near-zero.
         lg_h_norm_sq = (lg_h * lg_h).sum(dim=1, keepdim=True)
         
-        # Regularization epsilon prevents division by zero (Fix #13)
+        # Regularization epsilon prevents division by zero
         epsilon = 1e-8
         
         cbf_violation = F.relu(cbf_violation).unsqueeze(-1)
@@ -408,7 +408,7 @@ class OmniShieldGuard(nn.Module):
         """
         Logarithmic Barrier Loss with Centered Penalty.
 
-        FIX #19: Added quadratic centered penalty.
+        Added quadratic centered penalty.
         While the log-barrier pushes the policy away from the edge,
         the centered penalty encourages the policy to stay near a 
         known-safe nominal state (estimated from the state vector),
@@ -422,7 +422,7 @@ class OmniShieldGuard(nn.Module):
         violated_val = -torch.log(torch.tensor(eps)) + (0.5 / eps) * ( (h_x - eps)**2 / eps - 2*(h_x - eps) )
         log_barrier = torch.where(safe_mask, log_val, violated_val)
         
-        # Centered Penalty (Fix #19)
+        # Centered Penalty
         # Penalize if the state is drifting too far from a safe 'center' 
         # (simplified here as a penalty on state magnitude if state_dim allows)
         dist_penalty = 0.01 * (state**2).sum(dim=-1)
@@ -443,7 +443,7 @@ class OmniShieldGuard(nn.Module):
         device = latents.device
         telemetry = ShieldTelemetry()
 
-        # 1. Compute raw action from head (FIX #A10: Polymorphic)
+        # 1. Compute raw action from head (Polymorphic)
         u_nn_raw = self.action_head(latents)
         if isinstance(u_nn_raw, dict):
             u_nn = u_nn_raw.get('action', u_nn_raw.get('mean', next(iter(u_nn_raw.values()))))
@@ -452,7 +452,7 @@ class OmniShieldGuard(nn.Module):
         else:
             u_nn = u_nn_raw
 
-        # 2. Tier 1: Hardware Failsafe & Soft-Limits (FIX #16)
+        # 2. Tier 1: Hardware Failsafe & Soft-Limits
         if sensor_batch is not None and self.num_hw_sensors > 0:
             # Soft-limit margin (e.g., 10% of the range)
             margin = 0.1 * (self.hw_max - self.hw_min).clamp(min=1e-6)
@@ -481,10 +481,10 @@ class OmniShieldGuard(nn.Module):
         if u_nn.requires_grad:
             u_nn.retain_grad()
 
-        # 3. Extract physical state from latents (FIX #15: Attention)
+        # 3. Extract physical state from latents (Attention)
         state = self.state_extractor(latents)
 
-        # 4. Tier 2: CBF Projection (FIX #11: Vectorized)
+        # 4. Tier 2: CBF Projection (Vectorized)
         u_safe, h_x = self._cbf_project(u_nn, state)
         correction_norm = (u_safe - u_nn).norm(dim=1).mean().item()
         telemetry.cbf_correction_norm = correction_norm
@@ -494,7 +494,7 @@ class OmniShieldGuard(nn.Module):
         if correction_norm > 1e-6:
             telemetry.tier_activated = max(telemetry.tier_activated, 2)
 
-        # 5. Tier 3: Soft Penalty (FIX #19: Centered)
+        # 5. Tier 3: Soft Penalty (Centered)
         b_loss = self.barrier_loss(h_x, state) if self.training else torch.tensor(0.0, device=device)
         if b_loss.item() > 1e-6:
             telemetry.tier_activated = max(telemetry.tier_activated, 3)
