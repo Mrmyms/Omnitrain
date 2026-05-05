@@ -4,9 +4,9 @@ import time
 import numpy as np
 from omnitrain.fusion_core import LiquidFusionCore
 
-def run_chaos_overload():
+def run_noise_overload():
     print("\n" + "!"*60)
-    print("🔥 OMNITRAIN CHAOS OVERLOAD: INTEGRITY STRESS TEST")
+    print("🔥 OMNITRAIN SYSTEM STRESS TEST")
     print("!"*60 + "\n")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -28,7 +28,7 @@ def run_chaos_overload():
     core = LiquidFusionCore(config=config, d_model=512, n_latents=64).to(device)
     core.train() # Habilitamos gradientes para ver si explotan
 
-    # 2. Simulación de "Ataque Sensorial" (Chaos)
+    # 2. Simulación de "Ataque Sensorial" (Noise)
     # Generamos 5000 pasos de tiempo con valores extremos
     steps = 5000
     batch_size = 8
@@ -117,4 +117,4 @@ def run_chaos_overload():
     print("="*60 + "\n")
 
 if __name__ == "__main__":
-    run_chaos_overload()
+    run_noise_overload()

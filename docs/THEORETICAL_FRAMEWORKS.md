@@ -53,14 +53,14 @@ $$\psi(t)_i = \begin{cases} \sin(\omega_k t) & \text{if } i = 2k \\ \cos(\omega_
 
 ---
 
-## 4. The 3-Tier "Chaos" Curriculum
+## 4. The 3-Tier "Noise" Curriculum
 Theoretical robustness is useless without exposure to edge cases. We implement a non-linear training trajectory:
 
 | Phase | Objective | Theoretical Basis |
 |:---|:---|:---|
 | **I. Imitation** | Behavior Cloning | Optimal Control Theory |
 | **II. Safety** | Barrier Learning | Control Barrier Functions (CBF) |
-| **III. Chaos** | OOD Robustness | Domain Randomization (DR) |
+| **III. Noise** | OOD Robustness | Domain Randomization (DR) |
 
 ---
 

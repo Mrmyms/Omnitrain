@@ -77,11 +77,11 @@ To ensure unconditional numerical stability even with erratic $\Delta t$ (e.g., 
 
 ## 4. Asynchronous Backpropagation Through Time (Masked BPTT)
 
-Training a fully asynchronous multi-brain system using PyTorch's BPTT presents a significant challenge. `universal_trainer.py` solves this via **Zero-Step Decay BPTT**.
+Training a fully asynchronous multi-brain system using PyTorch's BPTT presents a significant challenge. `trainer.py` solves this via **Zero-Step Decay BPTT**.
 
 When parsing the `TokenBus` CSV dataset, `dataset.py` constructs a time-aligned sequence matrix. However, because sensors fire at different rates, the matrix contains `NaN` or "Missing" flags.
 
-During the `UniversalTrainer._train_epoch` loop:
+During the `Trainer._train_epoch` loop:
 1.  The trainer extracts the `step_sensors` dictionary for time $t$. If the GPS didn't fire at $t$, `'gps'` is omitted from the dictionary.
 2.  In `BioConectomaHub.forward`, the system iterates over the defined sensory modules. 
 3.  **The Crucial Mechanism:** If `m_id` (e.g., GPS) is missing, the Hub synthesizes a zero-tensor: `x_m = torch.zeros(B, d_model)`. 
@@ -148,8 +148,8 @@ Understanding the precise flow of dimensions is critical for debugging the frame
 
 ## 7. Codebase File Dependency Graph
 
-*   `cli.py`: Entry point. Manages user terminal interface. Imports `launcher.py`, `universal_trainer.py`, `diagnostics.py`, `exporter.py`, `pruner.py`.
-*   `universal_trainer.py`: Imports `fusion_core.py` (Core Model) and `omni_shield.py` (Safety). Manages the PyTorch `DataLoader` (from `dataset.py`) and executes `optimizer.step()`.
+*   `cli.py`: Entry point. Manages user terminal interface. Imports `launcher.py`, `trainer.py`, `diagnostics.py`, `exporter.py`, `pruner.py`.
+*   `trainer.py`: Imports `fusion_core.py` (Core Model) and `omni_shield.py` (Safety). Manages the PyTorch `DataLoader` (from `dataset.py`) and executes `optimizer.step()`.
 *   `fusion_core.py`: The largest file. Contains mathematical primitives (`BioLiquidCell`, `SignalSpatialMixer`) and the macro-architectures (`BioConectomaHub`, `LiquidFusionCore`).
 *   `omni_shield.py`: Standalone safety module. Can be used independently of the Conectoma, wrapping any PyTorch module.
 *   `exporter.py`: Scans `fusion_core.py` and `heads.py` to extract weights and structure, serializing them alongside JSON metadata into the `.omni` format for `OmniEngine.cpp`.

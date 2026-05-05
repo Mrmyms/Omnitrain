@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from omnitrain.fusion_core import LiquidFusionCore, BioConectomaHub
 from omnitrain.omni_shield import OmniShieldGuard
-from omnitrain.universal_trainer import UniversalTrainer
+from omnitrain.trainer import Trainer
 from omnitrain.heads import RegressionHead, ClassificationHead
 from omnitrain.exporter import OmniExporter
 
@@ -99,7 +99,7 @@ def run_integrity_audit():
         if shield is None:
             raise ValueError("Shield initialization failed.")
             
-        trainer = UniversalTrainer(core, heads, shield, config)
+        trainer = Trainer(core, heads, shield, config)
         batch = {
             'inputs': {
                 'lidar': torch.randn(2, 4, 32),

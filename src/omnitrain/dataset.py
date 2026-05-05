@@ -19,11 +19,11 @@ class OmniLogDataset(Dataset):
         csv_path: str,
         config: dict,
         seq_len: int = 32,
-        chaos_level: int = 0,
+        noise_level: int = 0,
     ):
         self.config = config
         self.seq_len = seq_len
-        self.chaos_level = chaos_level
+        self.noise_level = noise_level
 
         # Map inputs and heads from config to CSV columns
         self.input_mappings = []
@@ -33,7 +33,7 @@ class OmniLogDataset(Dataset):
                 'dim': input_cfg.get('dim', 1),
                 'type': input_cfg.get('type', 'sensor'),
                 'range': input_cfg.get('range', [0.0, 1.0]),
-                'chaos': input_cfg.get('chaos', False)
+                'noise': input_cfg.get('noise', False)
             })
 
         self.head_mappings = []
@@ -158,11 +158,11 @@ class OmniLogDataset(Dataset):
                 # Multi-dim -> (T, dim)
                 t = torch.tensor(data, dtype=torch.float32)
             
-            # Targeted Chaos
-            if mapping['chaos']:
-                if self.chaos_level >= 1:
+            # Targeted Noise
+            if mapping['noise']:
+                if self.noise_level >= 1:
                     t = SignalCorruptor.apply_dropout(t, drop_prob=0.1, fill_value=1.0)
-                if self.chaos_level >= 2:
+                if self.noise_level >= 2:
                     # Fix: Removed 0.0-1.0 clamp as 't' is Z-score normalized [-5, 5]
                     t = SignalCorruptor.apply_gaussian_noise(t, std=0.05)
                 

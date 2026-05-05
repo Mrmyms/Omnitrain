@@ -27,7 +27,7 @@ from .launcher import parse_and_launch
 from .exporter import OmniExporter
 from .token_bus import TokenBus
 from .recorder import OmniRecorder
-from .universal_trainer import UniversalTrainer
+from .trainer import Trainer
 from .diagnostics import OmniDiagnostic
 from .pruner import SynapticPruner
 
@@ -41,7 +41,7 @@ def handle_train(args):
         console.print("[red]ERROR[/red] Missing config or dataset. Run [white]/init[/white] or generate data first.")
         return
 
-    trainer = UniversalTrainer.from_config(config_path)
+    trainer = Trainer.from_config(config_path)
     
     layout = Layout()
     layout.split_column(
@@ -60,7 +60,7 @@ def handle_train(args):
             layout["header"].update(Panel(
                 f"[bold arctic_blue]INDUSTRIAL NEURAL KERNEL[/] | Epoch {m['epoch']}/{m['total_epochs']} | Phase: {m['phase']}",
                 border_style="color(117)",
-                subtitle=f"[dim]Chaos: {m['chaos']} | Stateful: ACTIVE[/]"
+                subtitle=f"[dim]Noise: {m['noise']} | Stateful: ACTIVE[/]"
             ))
 
             # Update Metrics (Dynamic Graph Simulation)

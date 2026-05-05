@@ -83,7 +83,7 @@ graph TD
 *   **[Technical Deep Dive](docs/DETAILS.md)**: CfC cells and ICNN barriers.
 *   **[Theoretical Frameworks](docs/THEORETICAL_FRAMEWORKS.md)**: Liquid Networks, ICNNs, and CTMT math.
 *   **[Conectoma Spec](docs/CONECTOMA_SPEC.md)**: Official architecture specification.
-*   **[Training Pipeline](docs/TRAINING_PIPELINE.md)**: 3-phase curriculum (Imitation, Safety, Chaos).
+*   **[Training Pipeline](docs/TRAINING_PIPELINE.md)**: 3-phase curriculum (Imitation, Safety, Noise).
 
 ---
 

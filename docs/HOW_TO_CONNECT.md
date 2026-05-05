@@ -14,7 +14,7 @@ inputs:
     hz: 10               # Frecuencia de actualización en Hercios. Importante para el cálculo del tiempo continuo (dt).
     dim: 512             # Dimensión del token final. Se recomienda 512 para estandarizar el 'Conectoma'.
     range: [0.0, 5.0]    # Rango de valores físicos (mín, máx). Útil para que la IA sepa los límites.
-    chaos: true          # Si es true, la red neuronal aplicará "Curriculum Dropout" asumiendo que el sensor puede fallar.
+    noise: true          # Si es true, la red neuronal aplicará "Curriculum Dropout" asumiendo que el sensor puede fallar.
 ```
 
 ---

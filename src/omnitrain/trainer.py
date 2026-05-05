@@ -72,7 +72,7 @@ class LagrangianSafetyController:
         return self.lam
 
 
-class UniversalTrainer:
+class Trainer:
     """
     Industrial Universal Trainer for BioLiquid Networks.
     Implements 3-Phase Curriculum with Gradient Synchronization.
@@ -123,7 +123,7 @@ class UniversalTrainer:
         )
 
     @classmethod
-    def from_config(cls, config_path: str, lr: float = 2e-3) -> 'UniversalTrainer':
+    def from_config(cls, config_path: str, lr: float = 2e-3) -> 'Trainer':
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
 
@@ -286,21 +286,21 @@ class UniversalTrainer:
         seq_len = train_cfg.get('seq_len', 32)
         
         scheduler = CurriculumScheduler(total_epochs=epochs)
-        scheduler.add_phase("Phase 1: Imitation", start_epoch=0, chaos_level=0, description="Behavior Cloning")
-        scheduler.add_phase("Phase 2: Safety", start_epoch=int(epochs * 0.5), chaos_level=1, description="CBF Constraint Learning")
-        scheduler.add_phase("Phase 3: Chaos", start_epoch=int(epochs * 0.8), chaos_level=2, description="Domain Randomization (OOD)")
+        scheduler.add_phase("Phase 1: Imitation", start_epoch=0, noise_level=0, description="Behavior Cloning")
+        scheduler.add_phase("Phase 2: Safety", start_epoch=int(epochs * 0.5), noise_level=1, description="CBF Constraint Learning")
+        scheduler.add_phase("Phase 3: Noise", start_epoch=int(epochs * 0.8), noise_level=2, description="Domain Randomization (OOD)")
 
         datasets = {
-            0: OmniLogDataset(csv_path, self.config, seq_len, chaos_level=0),
-            1: OmniLogDataset(csv_path, self.config, seq_len, chaos_level=1),
-            2: OmniLogDataset(csv_path, self.config, seq_len, chaos_level=2),
+            0: OmniLogDataset(csv_path, self.config, seq_len, noise_level=0),
+            1: OmniLogDataset(csv_path, self.config, seq_len, noise_level=1),
+            2: OmniLogDataset(csv_path, self.config, seq_len, noise_level=2),
         }
 
         for epoch in range(epochs):
             phase_info = scheduler.get_current_phase()
-            ds = datasets[phase_info.chaos_level]
+            ds = datasets[phase_info.noise_level]
             
-            bw = 0.1 if phase_info.chaos_level == 0 else (1.0 if phase_info.chaos_level == 1 else 2.0)
+            bw = 0.1 if phase_info.noise_level == 0 else (1.0 if phase_info.noise_level == 1 else 2.0)
             
             
             loader = DataLoader(ds, batch_size=batch_size, shuffle=False)
@@ -314,7 +314,7 @@ class UniversalTrainer:
                 'epoch': epoch + 1,
                 'total_epochs': epochs,
                 'phase': phase_info.name,
-                'chaos': phase_info.chaos_level,
+                'noise': phase_info.noise_level,
                 **m
             }
             

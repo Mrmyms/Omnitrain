@@ -6,22 +6,22 @@ from typing import List
 class TrainingPhase:
     name: str
     start_epoch: int
-    chaos_level: int
+    noise_level: int
     description: str
 
 class CurriculumScheduler:
     """
     Manages the lifecycle of a training process. 
-    Allows users to progressively introduce complexity (Chaos) to the Liquid Core.
+    Allows users to progressively introduce complexity (Noise) to the Liquid Core.
     """
     def __init__(self, total_epochs: int):
         self.total_epochs = total_epochs
         self.phases: List[TrainingPhase] = []
         self.current_epoch = 0
         
-    def add_phase(self, name: str, start_epoch: int, chaos_level: int, description: str = ""):
+    def add_phase(self, name: str, start_epoch: int, noise_level: int, description: str = ""):
         """Register a new training phase."""
-        self.phases.append(TrainingPhase(name, start_epoch, chaos_level, description))
+        self.phases.append(TrainingPhase(name, start_epoch, noise_level, description))
         # Keep phases sorted chronologically
         self.phases.sort(key=lambda x: x.start_epoch)
         
