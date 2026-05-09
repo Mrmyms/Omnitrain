@@ -28,6 +28,17 @@ chmod +x setup.sh
 ./setup.sh
 ```
 
+### 1.1 Windows Installation
+```powershell
+git clone https://github.com/Mrmyms/Omnitrain.git
+cd Omnitrain
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+pip install -e .
+python tests\test_integrity.py
+```
+
 ### 2. Launch the Console
 ```bash
 # Enter the interactive Dashboard

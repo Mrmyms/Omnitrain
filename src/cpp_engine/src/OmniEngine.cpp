@@ -15,7 +15,12 @@ OmniEngine::OmniEngine(const std::string& model_path) {
     ConfigureExecutionProviders();
 
     try {
+#ifdef _WIN32
+        std::wstring w_model_path(model_path.begin(), model_path.end());
+        session_ = std::make_unique<Ort::Session>(env_, w_model_path.c_str(), session_options_);
+#else
         session_ = std::make_unique<Ort::Session>(env_, model_path.c_str(), session_options_);
+#endif
         
         // Auto-detect input/output names from the unified graph
         Ort::AllocatorWithDefaultOptions allocator;

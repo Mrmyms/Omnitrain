@@ -1,13 +1,16 @@
 from setuptools import setup, Extension
 from pybind11.setup_helpers import Pybind11Extension, build_ext
 
-ext_modules = [
-    Pybind11Extension(
-        "omni_bus_core",
-        ["src/omni_bus_core.cpp"],
-        libraries=["rt"] if "linux" in str(__import__("sys").platform) else [],
-    ),
-]
+import sys
+ext_modules = []
+if sys.platform != "win32":
+    ext_modules = [
+        Pybind11Extension(
+            "omni_bus_core",
+            ["src/omni_bus_core.cpp"],
+            libraries=["rt"] if "linux" in sys.platform else [],
+        ),
+    ]
 
 setup(
     name="omnitrain",
@@ -19,5 +22,5 @@ setup(
             'omni=omnitrain.cli:main',
         ],
     },
-    cmdclass={"build_ext": build_ext},
+    cmdclass={"build_ext": build_ext} if ext_modules else {},
 )
