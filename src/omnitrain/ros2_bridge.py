@@ -108,4 +108,6 @@ class OmniROS2Node:
         self.node.destroy_node()
         self.rclpy.shutdown()
         if self.spin_thread: self.spin_thread.join(timeout=1.0)
+        self._initialized = False
+        OmniROS2Node._instance = None
         logging.info("🤖 ROS2 Node shut down.")

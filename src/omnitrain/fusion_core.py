@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 from typing import Optional, Dict, Tuple, List, Union
 import logging
-import torch.nn.utils.prune as prune
 
 
 class CNNProjector(nn.Module):
@@ -71,11 +70,6 @@ class AdaptiveInputProjector(nn.Module):
         else:
             raise RuntimeError(f"Unregistered projector requested in forward pass: {key}. This breaks Edge deployment. Add to config.")
 
-
-# ─────────────────────────────────────────────────────────────────────
-#  Continuous Temporal Encoding (CTE)
-# ─────────────────────────────────────────────────────────────────────
-
 class ContinuousTemporalEncoding(nn.Module):
     """
     Projects the arrival time of a sensor pulse into a high-dimensional latent space 
@@ -101,10 +95,6 @@ class ContinuousTemporalEncoding(nn.Module):
         emb = emb * self.amplitude
         return emb
 
-
-# ─────────────────────────────────────────────────────────────────────
-#  SignalSpatialMixer: O(N) Attention Replacement
-# ─────────────────────────────────────────────────────────────────────
 
 class SignalSpatialMixer(nn.Module):
     """
@@ -179,14 +169,10 @@ class SignalSpatialMixer(nn.Module):
         else:
             out = self.norm(res)
         
-        return out, (S_curr.detach() if not self.training else S_curr, 
-                     Z_curr.detach() if not self.training else Z_curr)
+        return out, (S_curr.detach() if not self.training else S_curr.detach().requires_grad_(True), 
+                     Z_curr.detach() if not self.training else Z_curr.detach().requires_grad_(True))
 
 
-
-# ─────────────────────────────────────────────────────────────────────
-#  LeCun Activation
-# ─────────────────────────────────────────────────────────────────────
 
 class LeCun(nn.Module):
     """LeCun's scaled tanh activation: 1.7159 * tanh(0.666 * x)"""
@@ -196,25 +182,8 @@ class LeCun(nn.Module):
         return 1.7159 * torch.tanh(0.666 * x)
 
 
-# ─────────────────────────────────────────────────────────────────────
-#  BioLiquidCell: Canonical CfC (Hasani et al., Nature MI 2022)
-# ─────────────────────────────────────────────────────────────────────
-
 class BioLiquidCell(nn.Module):
-    """
-    Canonical Closed-form Continuous-time (CfC) Cell.
-    Faithfully implements Hasani et al. 2022 (Nature Machine Intelligence):
-      - Shared Backbone MLP with LeCun activation
-      - Two learned target states (ff1, ff2)
-      - Learned sigmoid time-gate: σ(time_a · t + time_b)
-      - Affine sensory mapping (from LTC)
-      - Continual Learning via Hebbian Plasticity (Oja's Rule)
-    
-    Modes:
-      - "default": Full CfC with learned gate interpolating ff1 and ff2
-      - "no_gate": ff1 + t_interp * ff2
-      - "pure":    Direct closed-form solution (stateless)
-    """
+
     def __init__(self, input_size: int, hidden_size: int, 
                  backbone_units: int = 128, backbone_layers: int = 1,
                  continual_learning: bool = False, mode: str = "default", 
@@ -223,7 +192,7 @@ class BioLiquidCell(nn.Module):
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.continual_learning = continual_learning
-        self.mode = mode  # "default", "no_gate", "pure"
+        self.mode = mode  # default,no_gate, pure
         self.eta = eta
         self.backbone_units = backbone_units
         
@@ -290,11 +259,11 @@ class BioLiquidCell(nn.Module):
                 nn.init.constant_(w, 0.0)
         
     def reset_plasticity(self):
-        if self.continual_learning and not hasattr(self, 'w_plastic'):
-            self.register_buffer('w_plastic', torch.zeros(1, self.backbone_units, self.hidden_size))
-        else:
-            if hasattr(self, 'w_plastic') and self.w_plastic is not None:
-                self.w_plastic.zero_()
+        if self.continual_learning:
+            if self.w_plastic is None:
+                self.w_plastic = torch.zeros(1, self.backbone_units, self.hidden_size)
+        if self.w_plastic is not None:
+            self.w_plastic = torch.zeros_like(self.w_plastic)
 
     def forward(self, x: torch.Tensor, h_prev: torch.Tensor, dt: torch.Tensor) -> torch.Tensor:
         B = x.size(0)
@@ -374,10 +343,6 @@ class BioLiquidCell(nn.Module):
         return new_hidden
 
 
-# ─────────────────────────────────────────────────────────────────────
-#  NCPBackbone: Structured Neural Circuit
-# ─────────────────────────────────────────────────────────────────────
-
 class NCPBackbone(nn.Module):
     def __init__(self, input_dim: int, sensory: int = 12, inter: int = 20, command: int = 8, motor: int = 4, continual_learning: bool = False, eta: float = 0.001):
         super().__init__()
@@ -403,9 +368,6 @@ class NCPBackbone(nn.Module):
         return m_out, (h_inter, h_command)
 
 
-# ─────────────────────────────────────────────────────────────────────
-#  OmniBrainHub: Multi-Brain Modular System
-# ─────────────────────────────────────────────────────────────────────
 
 class OmniBrainHub(nn.Module):
     """
@@ -475,6 +437,7 @@ class LiquidFusionCore(nn.Module):
         self.precision = model_cfg.get('precision', 'fp32') # fp32, fp16, int8, nf4
         
         self.spatial_mixer = SignalSpatialMixer(d_model=d_model)
+        self._spatial_mixer_uncompiled = self.spatial_mixer  # Keep reference for ONNX export
         if self.use_fused_kernels and hasattr(torch, 'compile'):
             # Optimization: Fused Attention and LayerNorm kernels
             self.spatial_mixer = torch.compile(self.spatial_mixer)
@@ -799,19 +762,10 @@ class LiquidFusionCore(nn.Module):
             curr_latents = curr_latents.reshape(B, self.n_latents, -1)
             outputs.append(curr_latents)
 
-        if not torch.is_grad_enabled():
-            return outputs[-1]
-            
         return torch.stack(outputs, dim=1)
 
 
-# Final Unified Interface
 FusionCore = LiquidFusionCore
-
-
-# ─────────────────────────────────────────────────────────────────────
-#  NEW: IrregularTimeManager — Per-Sensor Δt Tracking
-# ─────────────────────────────────────────────────────────────────────
 
 class IrregularTimeManager:
     """
@@ -852,11 +806,6 @@ class IrregularTimeManager:
             self._last_ts.pop(modal_id, None)
         else:
             self._last_ts.clear()
-
-
-# ─────────────────────────────────────────────────────────────────────
-#  NEW: SparseWiring + WiredCfcCell — Authentic NCP Sparse Architecture
-# ─────────────────────────────────────────────────────────────────────
 
 class SparseWiring:
     """
@@ -951,10 +900,6 @@ class WiredCfcCell(nn.Module):
             return ff1 * (1.0 - t_interp) + t_interp * ff2
 
 
-# ─────────────────────────────────────────────────────────────────────
-#  NEW: MixedMemoryCfC — Anti-Vanishing Gradient for Long Sequences
-# ─────────────────────────────────────────────────────────────────────
-
 class MixedMemoryCfC(nn.Module):
     """
     Combines a BioLiquidCell (CfC) with a small LSTM auxiliary cell.
@@ -1010,9 +955,6 @@ class MixedMemoryCfC(nn.Module):
         
         return h_mixed, (h_cfc_next, h_lstm_next, c_lstm_next)
 
-# ─────────────────────────────────────────────────────────────────────
-#  NEW: BioConectoma Architecture (Hub & Wall)
-# ─────────────────────────────────────────────────────────────────────
 
 class NCPWiring:
     """
@@ -1134,6 +1076,7 @@ class BioConectomaHub(nn.Module):
             rec_part_expanded = recurrence_mask.T.repeat(repeats, 1)[:bb_units]
             
             bb_mask = torch.cat([input_part, rec_part_expanded], dim=1)
+            import torch.nn.utils.prune as prune
             prune.custom_from_mask(bb_first, name="weight", mask=bb_mask)
 
     def forward(self, step_sensors: Dict[str, torch.Tensor], dt: torch.Tensor, h_prev: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:

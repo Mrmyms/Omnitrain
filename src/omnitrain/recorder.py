@@ -145,5 +145,7 @@ class OmniRecorder:
 
             except KeyboardInterrupt:
                 self.active = False
+                if self.bus is not None:
+                    self.bus.cleanup()
                 console.print(f"\n[bold green]✔ RECORDING STOPPED[/bold green] (Saved {row_count} events)")
 

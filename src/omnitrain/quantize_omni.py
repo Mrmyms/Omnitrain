@@ -51,6 +51,7 @@ def quantize_omnitrain_(
             # Note: FP16 is usually handled by the target engine (TensorRT), 
             # but we can do some pre-processing here if needed.
             # For now, we signpost the user to the TensorRT runner.
+            if os.path.exists(temp_inferred): os.remove(temp_inferred)
             return
 
         if target == 'nf4':

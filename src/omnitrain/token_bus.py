@@ -3,7 +3,7 @@ import logging
 import uuid
 import numpy as np
 import multiprocessing as mp
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import os
 import platform
 import json
@@ -50,6 +50,7 @@ class TokenBus:
         else:
             logging.info(f"[TokenBus] Standard Python Backend Active (SID: {self.sid})")
             self._attach_python_backend()
+            self._internal_lock = mp.Lock()  # Protects SHM writes when no external ptr provided
             
         # Register session for robust cleanup (Reaper)
         if create:
@@ -154,6 +155,7 @@ class TokenBus:
             # 2. Vectorized Circular Write (No loops)
             # We use the shm_ptr directly (wait-free) or write_ptr_obj (legacy sync)
             start_idx = write_ptr_obj.value if write_ptr_obj else self.ptr_store[0]
+            lock = write_ptr_obj.get_lock() if write_ptr_obj else self._internal_lock
             
             # Calculate indices
             end_idx = (start_idx + num_rows) % self.max_tokens
@@ -195,11 +197,12 @@ class TokenBus:
             hb_idx = os.getpid() % 1024
             self.hb_store[hb_idx] = time.time()
 
-            # 4. Atomic Pointer Update
-            if write_ptr_obj:
-                write_ptr_obj.value = end_idx
-            else:
-                self.ptr_store[0] = end_idx
+            # 4. Atomic Pointer Update (under lock for multi-process safety)
+            with lock:
+                if write_ptr_obj:
+                    write_ptr_obj.value = end_idx
+                else:
+                    self.ptr_store[0] = end_idx
 
     def _write_token(self, idx: int, data: np.ndarray, timestamp: float, modal_id: str):
         """Internal low-level write to SHM buffers."""
@@ -374,7 +377,7 @@ class TokenBus:
                     if not pid_exists:
                         sid = data['sid']
                         prefix = f"omni_shm_{sid}"
-                        for suffix in ["data", "ts", "id", "meta", "ptr"]:
+                        for suffix in ["data", "ts", "id", "crc", "meta", "hb", "ptr"]:
                             try:
                                 shm = shared_memory.SharedMemory(name=f"{prefix}_{suffix}")
                                 shm.unlink()

@@ -110,6 +110,12 @@ class OmniExporter:
                 try: prune.remove(module, 'weight')
                 except ValueError: pass
 
+        # Swap torch.compile'd mixer with uncompiled version for ONNX compatibility
+        _compiled_mixer = None
+        if hasattr(core, '_spatial_mixer_uncompiled') and core.spatial_mixer is not core._spatial_mixer_uncompiled:
+            _compiled_mixer = core.spatial_mixer
+            core.spatial_mixer = core._spatial_mixer_uncompiled
+
         unified = UnifiedModel(core, heads, use_kv=use_kv_cache)
         unified.eval()
         n_latents, d_model = core.n_latents, core.d_model
@@ -139,6 +145,10 @@ class OmniExporter:
             verbose=False
         )
         logging.info(f"✅ Model saved to {export_path} (Opset {opset_version}) [Static={dynamic_axes is None}]")
+
+        # Restore compiled mixer if it was swapped
+        if _compiled_mixer is not None:
+            core.spatial_mixer = _compiled_mixer
 
     def export_for_qualcomm_snpe(self, core, heads, export_path: str, static_batch: int = 1, static_tokens: int = 10):
         """Export with static shapes for Hexagon DSP."""
@@ -205,7 +215,10 @@ class OmniExporter:
         from .fusion_core import LiquidFusionCore
         from .heads import ClassificationHead, RegressionHead
 
-        bundle = torch.load(omni_path, map_location='cpu')
+        # SECURITY NOTE: weights_only=False allows pickle deserialization.
+        # Only load .omni bundles from trusted sources.
+        # TODO: Migrate to safetensors for production deployment.
+        bundle = torch.load(omni_path, map_location='cpu', weights_only=False)
         meta = bundle.get('metadata', {})
         arch = bundle.get('architecture', {})
 
@@ -231,7 +244,8 @@ class OmniExporter:
                 if head_type == 'RegressionHead':
                     h = RegressionHead(output_dim, d_model_head)
                 else:
-                    h = ClassificationHead(output_dim, d_model_head)
+                    # For ClassificationHead, output_dim == num_classes
+                    h = ClassificationHead(num_classes=output_dim, d_model=d_model_head)
                 
                 h.load_state_dict(head_state)
                 h.eval()

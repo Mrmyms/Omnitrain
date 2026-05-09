@@ -192,14 +192,23 @@ class Trainer:
                 # Internal brain states are detached inside FusionCore during forward 
                 # if not handled here. To be safe, we ensure state is detached.
                 if hasattr(self.core, '_last_brain_state') and self.core._last_brain_state is not None:
-                    # Deep detach of the state dictionary
-                    new_state = {}
-                    for k, v in self.core._last_brain_state.items():
-                        if isinstance(v, tuple):
-                            new_state[k] = tuple(item.detach() for item in v)
-                        else:
-                            new_state[k] = v.detach()
-                    self.core._last_brain_state = new_state
+                    bs = self.core._last_brain_state
+                    if isinstance(bs, dict):
+                        new_state = {}
+                        for k, v in bs.items():
+                            if isinstance(v, tuple):
+                                new_state[k] = tuple(item.detach() for item in v)
+                            elif isinstance(v, torch.Tensor):
+                                new_state[k] = v.detach()
+                            else:
+                                new_state[k] = v
+                        self.core._last_brain_state = new_state
+                    elif isinstance(bs, tuple):
+                        self.core._last_brain_state = tuple(
+                            item.detach() if isinstance(item, torch.Tensor) else item for item in bs
+                        )
+                    elif isinstance(bs, torch.Tensor):
+                        self.core._last_brain_state = bs.detach()
 
             current_abs_time = self.core._abs_time_buf if self.core._abs_time_buf is not None else torch.zeros(B, 1, device=device)
             prev_step_latents = None
@@ -246,9 +255,10 @@ class Trainer:
 
                 # Use current lagrangian value for loss, but don't update yet
                 
-                lagr_loss = b_loss * self.lagrangian.value * barrier_weight
+                lagr_val = self.lagrangian.value.to(device)
+                lagr_loss = b_loss * lagr_val * barrier_weight
                 metrics['barrier'] += lagr_loss.detach()
-                metrics['lambda'] += self.lagrangian.value.detach()
+                metrics['lambda'] += lagr_val.detach()
                 step_loss += lagr_loss
 
                 total_sequence_loss += step_loss

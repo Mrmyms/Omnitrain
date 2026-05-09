@@ -33,12 +33,31 @@ from .pruner import SynapticPruner
 
 console = Console()
 
+def get_project_context(config_path="config.yaml"):
+    """Extract project-specific filenames from the config."""
+    project_name = "robot"
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r") as f:
+                cfg = yaml.safe_load(f)
+                project_name = cfg.get("project", "robot")
+        except Exception:
+            pass
+    
+    return {
+        "project": project_name,
+        "logs": f"{project_name.lower()}_logs.csv",
+        "model": f"{project_name.lower()}_final.omni"
+    }
+
 def handle_train(args):
+    """Start the training loop."""
     config_path = args[0] if args else "config.yaml"
-    csv_path = args[1] if len(args) > 1 else "robot_logs.csv"
+    ctx = get_project_context(config_path)
+    csv_path = args[1] if len(args) > 1 else ctx["logs"]
     
     if not os.path.exists(config_path) or not os.path.exists(csv_path):
-        console.print("[red]ERROR[/red] Missing config or dataset. Run [white]/init[/white] or generate data first.")
+        console.print(f"[red]ERROR[/red] Missing config ({config_path}) or dataset ({csv_path}). Run [white]/init[/white] or generate data first.")
         return
 
     trainer = Trainer.from_config(config_path)
@@ -70,8 +89,9 @@ def handle_train(args):
             
             # Simple ASCII Sparkline logic
             def get_spark(val):
+                blocks = "▁▂▃▄▅▆▇█"
                 idx = min(7, int(val * 10))
-                return "........"[idx]
+                return blocks[idx]
 
             table = Table(box=box.SIMPLE, expand=True)
             table.add_column("Neural Path", style="cyan")
@@ -140,15 +160,11 @@ def handle_diagnose(args):
     console.print(Panel(health_info.strip(), title="Internal Conectoma Health", border_style="white", box=box.HORIZONTALS))
 
 def handle_prune(args):
+    """Prune weak synapses from the Conectoma."""
+    config_path = "config.yaml" # Default config
+    ctx = get_project_context(config_path)
     
-    model_path = args[0] if args else None
-    if not model_path and os.path.exists('config.yaml'):
-        with open('config.yaml', 'r') as f:
-            cfg = yaml.safe_load(f)
-            model_path = f"{cfg.get('project', 'robot')}_final.omni"
-    
-    if not model_path:
-        model_path = "SafeDelivery_Robot_final.omni"
+    model_path = args[0] if args else ctx["model"]
     threshold = float(args[1]) if len(args) > 1 else 0.01
     
     if not os.path.exists(model_path):
@@ -172,44 +188,78 @@ def handle_prune(args):
 
 def handle_init(args):
     """Scaffold a new project environment."""
-    config_path = "config.yaml"
+    project_name = console.input("[bold cyan]Enter Project Name (e.g. MyRobot): [/]").strip()
+    if not project_name: project_name = "OmniRobot"
+
+    project_dir = console.input(f"[bold cyan]Enter Directory for '{project_name}' [dim](default: .)[/]: [/]").strip()
+    if not project_dir: project_dir = "."
+
+    if project_dir != "." and not os.path.exists(project_dir):
+        os.makedirs(project_dir)
+    
+    config_path = os.path.join(project_dir, "config.yaml")
     if os.path.exists(config_path):
-        console.print("[yellow]Project already initialized.[/] (config.yaml exists)")
+        console.print(f"[yellow]Project already initialized in {project_dir}.[/]")
         return
 
     default_config = {
-        'project': 'SafeDelivery_Robot',
+        'project': project_name,
         'model': {
             'n_latents': 32,
             'd_model': 256,
             'state_dim': 16,
             'brain_mode': 'conectoma',
             'conectoma': {
-                'inter_n': 20,
+                'enabled': True,
+                'sensory_n': 4,
+                'wall_n': 20,
                 'command_n': 8,
-                'motor_n': 4
             }
         },
         'inputs': [
-            {'id': 'lidar', 'dim': 512, 'type': 'vector'},
+            {'id': 'lidar', 'dim': 512, 'type': 'vector', 'noise': True},
             {'id': 'camera', 'dim': 1024, 'type': 'vision'}
         ],
+        'heads': [
+            {'id': 'drive', 'type': 'regression', 'output_dim': 4}
+        ],
+        'safety_constraints': [],
         'training': {
             'epochs': 30,
             'batch_size': 16,
-            'seq_len': 32
+            'seq_len': 32,
+            'lagrangian': {
+                'enabled': True,
+                'init_lambda': 0.1,
+                'lr': 0.02,
+                'lambda_max': 10.0
+            }
         }
     }
     with open(config_path, 'w') as f:
         yaml.dump(default_config, f)
     
     # Create dummy data if missing
-    if not os.path.exists("robot_logs.csv"):
-        with open("robot_logs.csv", "w") as f:
-            f.write("timestamp,lidar,camera,action_0,action_1\n")
+    csv_name = f"{default_config['project'].lower()}_logs.csv"
+    csv_path = os.path.join(project_dir, csv_name)
+    if not os.path.exists(csv_path):
+        input_ids = [inp['id'] for inp in default_config['inputs']]
+        # Assuming regression heads for the dummy CSV columns
+        action_cols = []
+        for head in default_config.get('heads', []):
+            if head.get('type') == 'regression':
+                dim = head.get('output_dim', 1)
+                if dim > 1:
+                    action_cols.extend([f"action_{i}" for i in range(dim)])
+                else:
+                    action_cols.append("action")
+        
+        header = ",".join(["timestamp"] + input_ids + action_cols) + "\n"
+        with open(csv_path, "w") as f:
+            f.write(header)
     
     console.print("[bold green]OK: PROJECT INITIALIZED[/bold green]")
-    console.print(f"  Created: [white]{config_path}[/], [white]robot_logs.csv[/]")
+    console.print(f"  Created: [white]{config_path}[/], [white]{csv_path}[/]")
 
 def handle_record(args):
     """Start high-fidelity TokenBus recording."""
@@ -261,9 +311,8 @@ def handle_deploy(args):
             args.pop(idx+1)
             args.pop(idx)
 
-    model_path = args[0] if args else None
-    if not model_path:
-        model_path = "SafeDelivery_Robot_final.omni"
+    ctx = get_project_context()
+    model_path = args[0] if args else ctx["model"]
     
     if not os.path.exists(model_path):
         console.print(f"[red]ERROR[/red] Model not found: {model_path}")

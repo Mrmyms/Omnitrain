@@ -200,3 +200,4 @@ class OmniLogDataset(Dataset):
         batch['is_start'] = (idx == 0)
 
         return batch
+        

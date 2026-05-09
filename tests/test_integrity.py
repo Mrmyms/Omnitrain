@@ -82,11 +82,11 @@ def run_integrity_audit():
         h_x = torch.randn(1, 1, 64)
         result = shield(h_x, sensor_readings)
         
-         Validate against dynamic emergency action
+        # Validate against dynamic emergency action
         action_match = torch.allclose(result['action'], shield.emergency_action.expand(1, -1))
         print_test("Safety Shield Emergency Override", result['tier'] == 1 and action_match)
         
-         Conectoma Connectivity Audit
+        # Conectoma Connectivity Audit
         print_test("Conectoma Island Prevention", (core.brain.sens_inter_mask.sum(dim=1) > 0).all().item())
         
     except Exception as e:
@@ -112,12 +112,12 @@ def run_integrity_audit():
         
         metrics = trainer._train_epoch([batch])
         
-         Verify that gradients actually flow and are not NaN
+        # Verify that gradients actually flow and are not NaN
         has_valid_grads = True
         grad_count = 0
         for p in core.parameters():
-            if p.requires_grad:
-                if p.grad is None or torch.isnan(p.grad).any():
+            if p.requires_grad and p.grad is not None:
+                if torch.isnan(p.grad).any():
                     has_valid_grads = False
                     break
                 grad_count += 1
