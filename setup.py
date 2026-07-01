@@ -12,10 +12,15 @@ if sys.platform != "win32":
         ),
     ]
 
+with open("README.md", "r", encoding="utf-8") as fh:
+    long_description = fh.read()
+
 setup(
     name="omnitrain",
-    version="1.0.0",
+    version="1.0.1",
     ext_modules=ext_modules,
     install_requires=["numpy", "torch", "rich", "pyyaml", "prompt_toolkit>=3.0", "pydantic"],
+    long_description=long_description,
+    long_description_content_type="text/markdown",
     cmdclass={"build_ext": build_ext} if ext_modules else {},
 )
