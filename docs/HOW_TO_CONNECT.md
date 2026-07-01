@@ -51,7 +51,7 @@ class MiSensorPersonalizado(ModalityPlugin):
 
 ---
 
-## 1. Método Offline / Datos Reales (`plugins_real.py`)
+## 1. Método Offline / Datos Reales (`plugins.py`)
 Ideal para pruebas rápidas sin hardware o para re-entrenar con grabaciones.
 
 ### Uso de CSV
@@ -60,7 +60,7 @@ Si tienes datos en una tabla:
 2. Usa `CSVModalityPlugin`.
 
 ```python
-from omnitrain.plugins_real import CSVModalityPlugin
+from omnitrain.plugins import CSVModalityPlugin
 plugin = CSVModalityPlugin(bus, "my_sensor_name", hz=10, csv_path="data.csv")
 plugin.run()
 ```
@@ -68,7 +68,7 @@ plugin.run()
 ### Uso de Carpetas de Imágenes
 Para simular una cámara con fotos locales:
 ```python
-from omnitrain.plugins_real import ImageFolderPlugin
+from omnitrain.plugins import ImageFolderPlugin
 plugin = ImageFolderPlugin(bus, "my_vision", hz=5, img_dir="./frames")
 plugin.run()
 ```
@@ -83,7 +83,7 @@ El estándar para robots físicos (Humble/Iron/Jazzy). OmniTrain usa un patrón 
 3. **Lanza los Plugins** instanciando los ya preconstruidos, o hereda de `ROS2BasePlugin` si necesitas un mensaje distinto a Image/LaserScan.
 
 ```python
-from omnitrain.plugins_ros2 import ROS2CameraPlugin, ROS2LidarPlugin
+from omnitrain.plugins import ROS2CameraPlugin, ROS2LidarPlugin
 
 # Conectar Cámara (transforma automáticamente sensor_msgs/Image a un Token 512-dim)
 cam = ROS2CameraPlugin(bus, "front_cam", hz=30, topic_name="/camera/image_raw")

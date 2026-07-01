@@ -14,13 +14,8 @@ if sys.platform != "win32":
 
 setup(
     name="omnitrain",
-    version="2.1.0",
+    version="1.0.0",
     ext_modules=ext_modules,
-    install_requires=["numpy", "torch", "rich", "pyyaml", "prompt_toolkit>=3.0", "typer", "pydantic"],
-    entry_points={
-        'console_scripts': [
-            'omnitrain=omnitrain.cli:app',
-        ],
-    },
+    install_requires=["numpy", "torch", "rich", "pyyaml", "prompt_toolkit>=3.0", "pydantic"],
     cmdclass={"build_ext": build_ext} if ext_modules else {},
 )

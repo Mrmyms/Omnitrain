@@ -41,35 +41,44 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-### 2. Launch the Console
-```bash
-# Enter the interactive Dashboard
-omni
+### 2. Scaffold a New Project
+```python
+from omnitrain import ProjectManager
+
+# Set up project folders, default config.yaml, and a training dataset
+ProjectManager.init_project()
 ```
 
-### 3. Initialize & Train
-```bash
-# Inside the omni console:
-> /init
-> /train
+### 3. Programmatic Training Curriculum
+```python
+from omnitrain import LiquidTrainer
+
+# Load trainer and fit behavioral and safety policies
+trainer = LiquidTrainer("config.yaml")
+metrics = trainer.fit("robot_logs.csv", epochs=5)
 ```
 
----
+### 4. Edge Deployment Compile
+```python
+from omnitrain import EdgeDeployer
 
-## CLI Reference (Slash Commands)
+# Compile brain checkpoint to optimized ONNX or Qualcomm Snapdragon DLC format
+deployer = EdgeDeployer("models/bot_brain.omni")
+deployer.export(target="tensorrt")
+```
 
-| Command | Description |
-| :--- | :--- |
-| `/init` | Scaffold a new project environment |
-| `/record` | Record live TokenBus telemetry to CSV |
-| `/train` | Stateful Lagrangian Training (3-Phase Curriculum) |
-| `/diagnose` | Run a Saliency Audit on sensory paths |
-| `/deploy` | Export to unified ONNX (Stripped Hooks) |
-| `/bus` | Monitor live multimodal IPC stream |
-| `/status` | Deep system health & SHM audit |
-| `/prune` | Synaptic Consolidation (Sparse Pruning) |
-| `/audit` | System Integrity & Health Audit |
-| `/exit` | Exit the framework |
+### 5. Multi-process Sensor Runner
+```python
+from omnitrain import AgentRunner
+
+# Start the real-time TokenBus circular buffer and spawn sensor modalities
+runner = AgentRunner("config.yaml")
+runner.start()
+
+# Monitor live circular buffer stream telemetry for 10 seconds
+runner.run_telemetry(duration=10.0)
+runner.stop()
+```
 
 ---
 

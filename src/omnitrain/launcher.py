@@ -5,7 +5,7 @@ import signal
 import sys
 import os
 from .token_bus import TokenBus
-from .monitor import run_monitor
+from .diagnostics_and_monitoring import run_monitor
 from rich.console import Console
 
 console = Console()

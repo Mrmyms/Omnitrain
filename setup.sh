@@ -49,31 +49,9 @@ echo -e "\n${BLUE}[4/4]${NC} Installation complete."
 echo -e "\n${GREEN}============================================================${NC}"
 echo -e "${GREEN}  OMNITRAIN READY FOR INDUSTRIAL DEPLOYMENT${NC}"
 echo -e "${GREEN}============================================================${NC}"
-echo -e "\nQuick Start Commands:"
-echo -e "  ${CYAN}omni${NC}          - Launch the BioLiquid Dashboard"
-echo -e "  ${CYAN}omni --help${NC}   - View CLI reference"
+echo -e "\nUsage Guide:"
+echo -e "  Import OmniTrain in Python scripts to scaffold projects, train networks, or run models:"
+echo -e "  ${CYAN}import omnitrain as ot${NC}"
 
-# Optional: Add alias to shell profile
-echo -e "\n${YELLOW}PRO-TIP:${NC} Would you like to add the '1omni' alias to your shell profile? (y/n)"
-read -r -p "> " response
-if [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
-    SHELL_PROFILE=""
-    case "$SHELL" in
-        */zsh)  SHELL_PROFILE="$HOME/.zshrc" ;;
-        */bash) SHELL_PROFILE="$HOME/.bash_profile" ;;
-        *)      SHELL_PROFILE="$HOME/.profile" ;;
-    esac
-    
-    VENV_PATH=$(pwd)/.venv/bin/python3
-    ALIAS_LINE="alias 1omni='$VENV_PATH -m omnitrain.cli'"
-    
-    if grep -q "alias 1omni=" "$SHELL_PROFILE"; then
-        echo -e "  ${YELLOW}Notice:${NC} Alias '1omni' already exists in $SHELL_PROFILE. Skipping."
-    else
-        echo "$ALIAS_LINE" >> "$SHELL_PROFILE"
-        echo -e "  ${GREEN}Alias added to $SHELL_PROFILE.${NC}"
-        echo -e "  Please run ${CYAN}source $SHELL_PROFILE${NC} or restart your terminal."
-    fi
-fi
 
 echo -e "\n${dim}OmniTrain Team: \"Fuse Everything. Trust Nothing. Verify Formally.\"${NC}\n"

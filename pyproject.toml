@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "omnitrain"
-version = "2.1.0"
+version = "1.0.0"
 description = "Multimodal AI Framework for Robotics"
 dependencies = [
     "numpy",
@@ -13,9 +13,6 @@ dependencies = [
     "pyyaml",
     "prompt_toolkit>=3.0"
 ]
-
-[project.scripts]
-omni = "omnitrain.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

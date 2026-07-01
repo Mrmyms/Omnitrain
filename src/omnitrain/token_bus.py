@@ -47,6 +47,8 @@ class TokenBus:
         if HAS_CPP:
             logging.info(f"[TokenBus] C++ Backend Active (SID: {self.sid})")
             self.backend = omni_bus_core.NativeTokenBus(max_tokens, token_dim, modal_id_len, self.sid, create)
+            self.ptr_store = np.array([0], dtype='int64')
+            self.hb_store = np.zeros(1024, dtype='float64')
         else:
             logging.info(f"[TokenBus] Standard Python Backend Active (SID: {self.sid})")
             self._attach_python_backend()
@@ -248,7 +250,8 @@ class TokenBus:
         Includes overrun detection.
         """
         if HAS_CPP:
-            return [], last_idx
+            now = time.time()
+            return self.backend.get_window(now - 2.0, now), last_idx
         
         # Capture current pointer (Atomic Read)
         current_idx = write_ptr_obj.value if write_ptr_obj else self.ptr_store[0]
@@ -317,7 +320,10 @@ class TokenBus:
 
     def __getstate__(self):
         state = self.__dict__.copy()
-        if not HAS_CPP:
+        if HAS_CPP:
+            if 'backend' in state:
+                del state['backend']
+        else:
             del state['shm_data']
             del state['shm_ts']
             del state['shm_id']
