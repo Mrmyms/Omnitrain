@@ -24,6 +24,15 @@ OmniTrain is a production-grade framework for building **Bio-Inspired Conectomas
 ## Quick Start
 
 ### 1. Installation
+
+You can install OmniTrain directly from PyPI:
+```bash
+pip install omnitrain
+```
+
+Alternatively, you can install from source:
+
+#### Linux/macOS Source Installation
 ```bash
 git clone https://github.com/Mrmyms/Omnitrain.git
 cd Omnitrain
@@ -31,7 +40,7 @@ chmod +x setup.sh
 ./setup.sh
 ```
 
-### 1.1 Windows Installation
+#### Windows Source Installation
 ```powershell
 git clone https://github.com/Mrmyms/Omnitrain.git
 cd Omnitrain
