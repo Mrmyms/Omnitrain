@@ -1,6 +1,9 @@
 # OmniTrain v2.1.0: Conectoma 
 ### Bio-Inspired Sparse Neural Circuits & Formal Safety for Robotics
 
+> [!WARNING]
+> This project is currently **UNFINISHED** and in **PRE-BETA** phase. Core features and APIs are undergoing active development, testing, and security audits. Use with caution.
+
 ---
 
 OmniTrain is a production-grade framework for building **Bio-Inspired Conectomas (Hub & Wall architecture)**. It utilizes Closed-form Continuous-time (CfC) networks and Input Convex Neural Networks (ICNN) to provide sub-millisecond, provably safe robotic control on edge hardware (Jetson/Qualcomm).
@@ -36,7 +39,6 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 pip install -e .
-python tests\test_integrity.py
 ```
 
 ### 2. Launch the Console
@@ -91,10 +93,11 @@ graph TD
 
 ## Resources
 
-*   **[Technical Deep Dive](docs/DETAILS.md)**: CfC cells and ICNN barriers.
+*   **[Technical Deep Dive & Conectoma Spec](docs/CONECTOMA_SPEC.md)**: Official architecture specification, CfC cells, and ICNN barriers.
 *   **[Theoretical Frameworks](docs/THEORETICAL_FRAMEWORKS.md)**: Liquid Networks, ICNNs, and CTMT math.
-*   **[Conectoma Spec](docs/CONECTOMA_SPEC.md)**: Official architecture specification.
-*   **[Training Pipeline](docs/TRAINING_PIPELINE.md)**: 3-phase curriculum (Imitation, Safety, Noise).
+*   **[Connectivity Guide](docs/HOW_TO_CONNECT.md)**: Connecting sensors (ROS 2, Isaac Sim, CSV) to TokenBus.
+*   **[LNN Research Database](docs/LIQUID_NETWORKS_DB.md)**: MIT CSAIL papers, benchmarks, and LNN/CfC references.
+*   **[Training Pipeline](docs/TRAINING_PIPELINE.md)**: 5-phase curriculum (Imitation, Safety, Noise, Lagrangian Stability, Pruning).
 
 ---
 

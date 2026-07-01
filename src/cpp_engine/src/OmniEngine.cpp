@@ -26,12 +26,28 @@ OmniEngine::OmniEngine(const std::string& model_path) {
         Ort::AllocatorWithDefaultOptions allocator;
         size_t num_inputs = session_->GetInputCount();
         for (size_t i = 0; i < num_inputs; i++) {
-            input_names_.push_back(session_->GetInputName(i, allocator));
+#if ORT_API_VERSION >= 13
+            Ort::AllocatedStringPtr name_ptr = session_->GetInputNameAllocated(i, allocator);
+            input_names_str_.push_back(name_ptr.get());
+#else
+            char* name_ptr = session_->GetInputName(i, allocator);
+            input_names_str_.push_back(name_ptr);
+            allocator.Free(name_ptr);
+#endif
+            input_names_.push_back(input_names_str_.back().c_str());
         }
         
         size_t num_outputs = session_->GetOutputCount();
         for (size_t i = 0; i < num_outputs; i++) {
-            output_names_.push_back(session_->GetOutputName(i, allocator));
+#if ORT_API_VERSION >= 13
+            Ort::AllocatedStringPtr name_ptr = session_->GetOutputNameAllocated(i, allocator);
+            output_names_str_.push_back(name_ptr.get());
+#else
+            char* name_ptr = session_->GetOutputName(i, allocator);
+            output_names_str_.push_back(name_ptr);
+            allocator.Free(name_ptr);
+#endif
+            output_names_.push_back(output_names_str_.back().c_str());
         }
 
         std::cout << "✔ OmniEngine: Loaded unified graph with " << num_outputs << " output heads." << std::endl;

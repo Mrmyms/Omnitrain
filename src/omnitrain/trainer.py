@@ -22,39 +22,27 @@ console = Console()
 #  LagrangianSafetyController: Adaptive Safety Weight
 # ─────────────────────────────────────────────────────────────────────
 
-class LagrangianSafetyController:
+class PIDLagrangianController:
     """
-    Augmented Lagrangian Multiplier for safety-constrained training.
-
-    Problem: A static `barrier_weight` can be dominated by the task loss,
-    causing the policy to sacrifice safety for performance.
-
-    Solution: Track constraint violations and adaptively increase λ until
-    the constraint h(x) ≥ 0 is satisfied. When satisfied, λ decreases.
-    This is the standard primal-dual method for constrained RL.
-
-        λ_{t+1} = max(λ_min, λ_t + lr * max(0, -mean(h(x))))
-
-    Args:
-        init_lambda:  Initial safety weight (should be low; controller
-                      will increase it if needed).
-        lr:           Lagrangian learning rate (dual step size).
-        lambda_min:   Minimum allowed weight (prevents collapse to 0).
-        lambda_max:   Maximum allowed weight (prevents instability).
+    PID-based Augmented Lagrangian Multiplier for safety-constrained training.
     """
-
     def __init__(
         self,
         init_lambda: float = 0.1,
-        lr: float = 0.02,
+        kp: float = 0.05,
+        ki: float = 0.01,
+        kd: float = 0.01,
         lambda_min: float = 0.01,
         lambda_max: float = 10.0,
     ):
-        
         self.lam = torch.tensor(init_lambda, dtype=torch.float32)
-        self.lr = lr
+        self.kp = kp
+        self.ki = ki
+        self.kd = kd
         self.lambda_min = lambda_min
         self.lambda_max = lambda_max
+        self.integral = init_lambda / ki if ki > 0 else 0.0
+        self.prev_violation = 0.0
 
     def update(self, h_x_mean: torch.Tensor) -> torch.Tensor:
         """
@@ -63,8 +51,24 @@ class LagrangianSafetyController:
         if self.lam.device != h_x_mean.device:
             self.lam = self.lam.to(h_x_mean.device)
             
-        violation = torch.clamp(-h_x_mean, min=0.0)
-        self.lam = torch.clamp(self.lam + self.lr * violation, min=self.lambda_min, max=self.lambda_max)
+        violation = torch.clamp(-h_x_mean, min=0.0).item()
+        
+        if violation == 0.0:
+            self.integral *= 0.9 # Decay when safe
+            
+        # PID terms
+        p_term = self.kp * violation
+        self.integral += violation
+        # Anti-windup
+        i_term = self.ki * min(self.integral, 100.0) 
+        d_term = self.kd * (violation - self.prev_violation)
+        
+        self.prev_violation = violation
+        
+        # lambda is directly the output of the PID
+        raw_lam = p_term + i_term + d_term
+        
+        self.lam = torch.clamp(torch.tensor(raw_lam, dtype=torch.float32, device=h_x_mean.device), min=self.lambda_min, max=self.lambda_max)
         return self.lam
 
     @property
@@ -115,11 +119,14 @@ class Trainer:
 
         
         lagr_cfg = config.get('training', {}).get('lagrangian', {})
-        self.lagrangian = LagrangianSafetyController(
+        lr_fallback = lagr_cfg.get('lr', 0.02)
+        self.lagrangian = PIDLagrangianController(
             init_lambda=lagr_cfg.get('init_lambda', 0.1),
-            lr=lagr_cfg.get('lr', 0.02),
+            kp=lagr_cfg.get('kp', lr_fallback * 2.0),
+            ki=lagr_cfg.get('ki', lr_fallback * 0.5),
+            kd=lagr_cfg.get('kd', lr_fallback * 0.1),
             lambda_min=lagr_cfg.get('lambda_min', 0.01),
-            lambda_max=lagr_cfg.get('lambda_max', 10.0),
+            lambda_max=lagr_cfg.get('lambda_max', 20.0),
         )
 
     @classmethod
@@ -279,6 +286,7 @@ class Trainer:
                 torch.nn.utils.clip_grad_norm_(group['params'], 1.0)
             
             self.optimizer.step()
+            self.shield.update_ema()
             self.shield.barrier._ensure_icnn_constraints()  # Now a no-op, kept for compat
             metrics['count'] += 1
 

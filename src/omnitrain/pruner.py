@@ -148,11 +148,6 @@ if __name__ == "__main__":
     else:
         print("ℹ  logic_bot_v2.omni not found for pruning test.")
 
-
-# ─────────────────────────────────────────────────────────────────────
-#  NEW: SynapticPruner — Hebbian Unlearning / Plasticity Consolidation
-# ─────────────────────────────────────────────────────────────────────
-
 class SynapticPruner:
     """
     Post-training synaptic consolidation using Hebbian Unlearning.

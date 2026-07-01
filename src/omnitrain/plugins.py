@@ -3,6 +3,7 @@ import abc
 import numpy as np
 import multiprocessing
 from typing import Any, Optional
+from omnitrain.robot_registry import SensorSpec
 
 
 class ModalityPlugin(abc.ABC):
@@ -24,6 +25,13 @@ class ModalityPlugin(abc.ABC):
     @abc.abstractmethod
     def encode(self, raw_data: Any) -> np.ndarray:
         pass
+
+    @classmethod
+    def from_sensor_spec(cls, spec: SensorSpec, bus: Any, write_ptr: Optional[Any] = None) -> 'ModalityPlugin':
+        """Factory method to create a generic plugin from a SensorSpec."""
+        # For a real system, you'd map spec.type to specific subclasses.
+        # Here we return a Dummy plugin that respects the spec's shape.
+        return DummyLidarPlugin(bus=bus, modal_id=spec.id, frequency_hz=spec.hz, write_ptr=write_ptr)
 
     def run(self) -> None:
         period = 1.0 / self.frequency_hz

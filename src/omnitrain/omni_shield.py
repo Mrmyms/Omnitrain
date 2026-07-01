@@ -246,8 +246,21 @@ class OmniShieldGuard(nn.Module):
             
         self.register_buffer('emergency_action', torch.zeros(1, action_dim))
 
+        # ── EMA Setup ──
+        self.ema_decay = 0.999
+        self.barrier_ema = NeuralBarrier(state_dim)
+        self.barrier_ema.load_state_dict(self.barrier.state_dict())
+        for p in self.barrier_ema.parameters():
+            p.requires_grad = False
+
         # ── Telemetry ──
         self._last_telemetry: Optional[ShieldTelemetry] = None
+
+    def update_ema(self):
+        """Update EMA parameters of the barrier."""
+        with torch.no_grad():
+            for p, p_ema in zip(self.barrier.parameters(), self.barrier_ema.parameters()):
+                p_ema.data.mul_(self.ema_decay).add_(p.data, alpha=1.0 - self.ema_decay)
 
     # ─── Configuration API ───────────────────────────────────────────
 
@@ -404,27 +417,19 @@ class OmniShieldGuard(nn.Module):
 
     # ─── Tier 3: Barrier Loss ────────────────────────────────────────
 
-    def barrier_loss(self, h_x: torch.Tensor, state: torch.Tensor) -> torch.Tensor:
+    def barrier_loss_ema(self, h_x_ema: torch.Tensor, state: torch.Tensor) -> torch.Tensor:
         """
-        Logarithmic Barrier Loss with Centered Penalty.
-
-        Added quadratic centered penalty.
-        While the log-barrier pushes the policy away from the edge,
-        the centered penalty encourages the policy to stay near a 
-        known-safe nominal state (estimated from the state vector),
-        preventing 'safety-jitter' where the policy oscillates near the boundary.
+        Logarithmic Barrier Loss with Centered Penalty using EMA weights.
         """
         eps = 1e-6
-        safe_mask = h_x > eps
+        safe_mask = h_x_ema > eps
         
         # Log-barrier component (Tier 3)
-        log_val = -torch.log(h_x.clamp(min=eps))
-        violated_val = -torch.log(torch.tensor(eps)) + (0.5 / eps) * ( (h_x - eps)**2 / eps - 2*(h_x - eps) )
+        log_val = -torch.log(h_x_ema.clamp(min=eps))
+        violated_val = -torch.log(torch.tensor(eps)) + (0.5 / eps) * ( (h_x_ema - eps)**2 / eps - 2*(h_x_ema - eps) )
         log_barrier = torch.where(safe_mask, log_val, violated_val)
         
         # Centered Penalty
-        # Penalize if the state is drifting too far from a safe 'center' 
-        # (simplified here as a penalty on state magnitude if state_dim allows)
         dist_penalty = 0.01 * (state**2).sum(dim=-1)
         
         return self.barrier_loss_weight * (log_barrier + dist_penalty).mean()
@@ -481,6 +486,14 @@ class OmniShieldGuard(nn.Module):
         if u_nn.requires_grad:
             u_nn.retain_grad()
 
+        # Dynamic Gradient Clipping for Latents (connection to Hub)
+        if latents.requires_grad:
+            def dynamic_clip_hook(grad):
+                norm = grad.norm()
+                clip_val = torch.clamp(norm, min=0.1, max=1.0)
+                return torch.clamp(grad, -clip_val, clip_val)
+            latents.register_hook(dynamic_clip_hook)
+
         # 3. Extract physical state from latents (Attention)
         state = self.state_extractor(latents)
 
@@ -494,8 +507,17 @@ class OmniShieldGuard(nn.Module):
         if correction_norm > 1e-6:
             telemetry.tier_activated = max(telemetry.tier_activated, 2)
 
-        # 5. Tier 3: Soft Penalty (Centered)
-        b_loss = self.barrier_loss(h_x, state) if self.training else torch.tensor(0.0, device=device)
+        # 5. Tier 3: Soft Penalty (Centered) using EMA
+        if self.training:
+            # We use the EMA (smoothed) version of the barrier to compute the policy training signal.
+            # This prevents the barrier loss from oscillating, since the EMA weights are a stable,
+            # exponentially-smoothed snapshot of the barrier network.
+            # NOTE: The barrier network itself is trained via the CBF projection loss (Tier 2),
+            # which IS differentiable. This EMA loss only trains the state_extractor and FusionCore.
+            b_loss = self.barrier_loss_ema(self.barrier_ema(state), state)
+        else:
+            b_loss = torch.tensor(0.0, device=device)
+
         if b_loss.item() > 1e-6:
             telemetry.tier_activated = max(telemetry.tier_activated, 3)
 

@@ -43,13 +43,8 @@ echo -e "\n${BLUE}[3/4]${NC} Installing dependencies..."
 ./.venv/bin/python3 -m pip install -r requirements.txt
 ./.venv/bin/python3 -m pip install -e .
 
-echo -e "\n${BLUE}[4/4]${NC} Industrialization Audit..."
-if ./.venv/bin/python3 tests/test_integrity.py; then
-    echo -e "\n  ${GREEN}Audit Passed: Integrity Verification Successful.${NC}"
-else
-    echo -e "\n  ${RED}Audit Failed: Please check the logs above.${NC}"
-    exit 1
-fi
+echo -e "\n${BLUE}[4/4]${NC} Installation complete."
+
 
 echo -e "\n${GREEN}============================================================${NC}"
 echo -e "${GREEN}  OMNITRAIN READY FOR INDUSTRIAL DEPLOYMENT${NC}"

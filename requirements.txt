@@ -3,3 +3,4 @@ torch
 rich
 pyyaml
 prompt_toolkit>=3.0
+pytest

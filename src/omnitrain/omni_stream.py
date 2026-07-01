@@ -25,6 +25,7 @@ import time
 import os
 from typing import Any, Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass, field
+from .async_fusion import ModalityLatentBuffer, AsyncSensorAligner
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -362,6 +363,13 @@ class OmniStream:
         self._last_time = time.perf_counter()
         self._step_count = 0
         self._history: List[Dict] = []
+        
+        # Async Fusion setup
+        device = next(core.parameters()).device if hasattr(core, 'parameters') else torch.device('cpu')
+        self.latent_buffer = ModalityLatentBuffer(device=device)
+        self.aligner = AsyncSensorAligner()
+        self._last_times = {}
+        self._abs_time = 0.0
 
     def reset(self):
         """Clear all internal state (liquid memory + timing)."""
@@ -369,6 +377,10 @@ class OmniStream:
         self._last_time = time.perf_counter()
         self._step_count = 0
         self._history.clear()
+        
+        self.latent_buffer.reset()
+        self._last_times.clear()
+        self._abs_time = 0.0
 
     def send(
         self,
@@ -511,9 +523,21 @@ class OmniStream:
             
             dt_inputs[detected.modal_id] = dt_tensor
 
+        # Update absolute time
+        self._abs_time += dt_float
+        abs_time_tensor = torch.tensor([self._abs_time], dtype=torch.float32, device=dt_tensor.device).unsqueeze(0)
+        
+        # Apply Zero-Order Hold (ZOH) via AsyncSensorAligner
+        aligned_sensors, _ = self.aligner(
+            current_latents=sensor_dict,
+            current_time=abs_time_tensor,
+            latent_buffer=self.latent_buffer,
+            last_times=self._last_times
+        )
+
         with torch.no_grad():
             latents = self.core(
-                sensor_dict,
+                aligned_sensors,
                 dt_tensor,
                 prev_latents=latents,
             )

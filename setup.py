@@ -16,10 +16,10 @@ setup(
     name="omnitrain",
     version="2.1.0",
     ext_modules=ext_modules,
-    install_requires=["numpy", "torch", "rich", "pyyaml", "prompt_toolkit>=3.0"],
+    install_requires=["numpy", "torch", "rich", "pyyaml", "prompt_toolkit>=3.0", "typer", "pydantic"],
     entry_points={
         'console_scripts': [
-            'omni=omnitrain.cli:main',
+            'omnitrain=omnitrain.cli:app',
         ],
     },
     cmdclass={"build_ext": build_ext} if ext_modules else {},

@@ -34,7 +34,7 @@ public:
         for (const auto& c : constraints_) {
             if (c.sensor_id == sensor_id) {
                 if (value < c.min_val || value > c.max_val) {
-                    std::cerr << "⚠️  SAFETY VIOLATION [" << sensor_id << "]: " 
+                    std::cerr << "SAFETY VIOLATION [" << sensor_id << "]: " 
                               << value << " is outside [" << c.min_val << ", " << c.max_val << "]" << std::endl;
                     return false;
                 }
@@ -51,4 +51,4 @@ private:
     std::vector<Constraint> constraints_;
 };
 
-} // namespace omni
+}

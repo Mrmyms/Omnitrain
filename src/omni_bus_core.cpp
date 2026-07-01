@@ -13,7 +13,7 @@
 namespace py = pybind11;
 
 struct BusHeader {
-    pthread_mutex_t mutex;
+    pthread_mutex_t mutex; 
     int write_ptr;
     int max_tokens;
     int token_dim;

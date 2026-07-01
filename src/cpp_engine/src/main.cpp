@@ -29,7 +29,12 @@ int main(int argc, char* argv[]) {
 
         // 3. High-Speed Inference (Zero-GIL)
         std::cout << "🚀 Running inference on " << num_tokens << " tokens..." << std::endl;
-        engine.Forward(mock_tokens, mock_timestamps, batch_size, num_tokens);
+        
+        std::vector<float> mock_state(batch_size * 32 * 256, 0.0f);
+        float dt = 0.1f;
+        float abs_time = 0.0f;
+        
+        engine.Step(mock_tokens, mock_state, dt, abs_time);
 
         std::cout << "✅ Inference cycle completed successfully." << std::endl;
 
