@@ -8,14 +8,14 @@ bool ESPOmniEngine::Load(const unsigned char* omnibit_data, size_t length) {
         return false; 
     }
 
-    // 1. Verificar Magic Bytes 'OMNI\x02' (V2)
+    // 1. Verify Magic Bytes 'OMNI\x02' (V2)
     if (omnibit_data[0] != 'O' || omnibit_data[1] != 'M' || 
         omnibit_data[2] != 'N' || omnibit_data[3] != 'I' || 
         omnibit_data[4] != 0x02) {
         return false;
     }
 
-    // 2. Leer metadata (20 bytes)
+    // 2. Read metadata (20 bytes)
     uint32_t dims[5];
     std::memcpy(dims, omnibit_data + 8, sizeof(dims));
     
@@ -26,20 +26,20 @@ bool ESPOmniEngine::Load(const unsigned char* omnibit_data, size_t length) {
     total_weights_ = dims[4];
 
     if (input_dim_ + d_model_ > 512 || d_model_ > 256 || backbone_units_ > 256) {
-        return false; // Sobrepasa preasignación estática
+        return false; // Exceeds static pre-allocation boundaries
     }
 
-    // Inicializar estado oculto (SRAM)
+    // Initialize hidden state (SRAM)
     std::memset(state_buffer_, 0, sizeof(state_buffer_));
     std::memset(latents_, 0, sizeof(latents_));
 
-    // 3. Apuntar al arreglo de pesos en Flash (Offset = 28)
+    // 3. Point to the weights array in Flash (Offset = 28)
     weights_ptr_ = reinterpret_cast<const float*>(omnibit_data + 28);
     
-    // 4. Mapeo estricto de offsets para acceso secuencial de matrices
+    // 4. Strict offset mapping for sequential matrix access
     uint32_t offset = 0;
     
-    // Proyector de entrada
+    // Input Projector
     offset += (input_dim_ * d_model_) + d_model_;
     
     // CTE
@@ -79,7 +79,7 @@ void ESPOmniEngine::matmul(const float* W, const float* b, const float* x, float
     for (int i = 0; i < rows; ++i) {
         float sum = (b != nullptr) ? b[i] : 0.0f;
         for (int j = 0; j < cols; ++j) {
-            sum += x[j] * W[i * cols + j]; // Multiplicación Lineal O(R*C)
+            sum += x[j] * W[i * cols + j]; // Linear Multiplication O(R*C)
         }
         out[i] = sum;
     }
@@ -92,16 +92,16 @@ std::vector<float> ESPOmniEngine::Step(const float* sensors, float dt, float abs
     
     std::memset(latents_, 0, d_model_ * sizeof(float));
     
-    // Fase 1: Proyección Adaptativa
+    // Phase 1: Adaptive Projection
     apply_input_projection(sensors);
     
-    // Fase 2: Codificación Temporal Continua (CTE)
+    // Phase 2: Continuous Temporal Encoding (CTE)
     add_temporal_encoding(abs_time);
     
-    // Fase 3: BioLiquidCell Exacta
+    // Phase 3: Exact BioLiquidCell
     apply_bio_liquid_cell(dt);
     
-    // Fase 4: Generación de Acción (Usando estado actual)
+    // Phase 4: Action Generation (Using current state)
     std::vector<float> action(output_dim_, 0.0f);
     for (uint32_t i = 0; i < output_dim_ && i < d_model_; ++i) {
         action[i] = state_buffer_[i];
@@ -124,6 +124,9 @@ void ESPOmniEngine::add_temporal_encoding(float abs_time) {
     
     for (uint32_t i = 0; i < d_model_ / 2; ++i) {
         float arg = abs_time * inv_freq[i] + phase[i];
+        
+        // PyTorch uses torch.cat([sin, cos], dim=-1), 
+        // meaning all sines are concatenated first, followed by all cosines.
         latents_[i] += std::sin(arg) * amplitude[i];
         latents_[i + (d_model_ / 2)] += std::cos(arg) * amplitude[i + (d_model_ / 2)];
     }
@@ -135,7 +138,7 @@ void ESPOmniEngine::apply_bio_liquid_cell(float dt) {
         x_in_[i] = latents_[i] * sensory_w_[i] + sensory_b_[i];
     }
     
-    // 2. Concatenar estado previo (x_in = cat([x_mapped, h_in]))
+    // 2. Concatenate previous state (x_in = cat([x_mapped, h_in]))
     for (uint32_t i = 0; i < d_model_; ++i) {
         x_in_[input_dim_ + i] = state_buffer_[i];
     }
@@ -166,10 +169,10 @@ void ESPOmniEngine::apply_bio_liquid_cell(float dt) {
     matmul(time_a_w_, time_a_b_, b_time_, time_a_out, d_model_, half_units);
     matmul(time_b_w_, time_b_b_, b_time_, time_b_out, d_model_, half_units);
     
-    // Clamp dt para seguridad y aplicar time_scale
+    // Clamp dt for safety and apply time_scale
     float ts = std::max(dt, 0.0f);
     
-    // 7. Actualizar Estado (CfC Default Mode)
+    // 7. Update State (CfC Default Mode)
     for (uint32_t i = 0; i < d_model_; ++i) {
         float t_scaled = ts * std::abs(time_scale_[i]);
         float t_interp = sigmoid(time_a_out[i] * t_scaled + time_b_out[i]);

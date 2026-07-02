@@ -69,11 +69,15 @@ metrics = trainer.fit("robot_logs.csv", epochs=5)
 
 ### 4. Edge Deployment Compile
 ```python
-from omnitrain import EdgeDeployer
+from omnitrain import EdgeDeployer, ESP32Exporter
 
-# Compile brain checkpoint to optimized ONNX or Qualcomm Snapdragon DLC format
+# Option A: Export to Qualcomm Snapdragon (DLC) or TensorRT
 deployer = EdgeDeployer("models/bot_brain.omni")
 deployer.export(target="tensorrt")
+
+# Option B: Export to Microcontrollers (ESP32) Zero-Copy Binary
+exporter = ESP32Exporter(output_dir="esp32_firmware/data")
+exporter.export(model, input_dim=8, d_model=128, output_dim=4, filename="bot_brain.omnibit")
 ```
 
 ### 5. Multi-process Sensor Runner
@@ -116,6 +120,7 @@ graph TD
 *   **[Connectivity Guide](docs/HOW_TO_CONNECT.md)**: Connecting sensors (ROS 2, Isaac Sim, CSV) to TokenBus.
 *   **[LNN Research Database](docs/LIQUID_NETWORKS_DB.md)**: MIT CSAIL papers, benchmarks, and LNN/CfC references.
 *   **[Training Pipeline](docs/TRAINING_PIPELINE.md)**: 5-phase curriculum (Imitation, Safety, Noise, Lagrangian Stability, Pruning).
+*   **[ESP32 Edge Port Guide](docs/ESP32_PORT_GUIDE.md)**: Zero-Copy C++ Engine deployment instructions for 512KB microcontrollers.
 
 ---
 

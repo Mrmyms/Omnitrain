@@ -10,11 +10,11 @@ class ESPOmniEngine {
 public:
     ESPOmniEngine() : is_loaded(false), weights_ptr_(nullptr) {}
 
-    // Carga los pesos mapeados en memoria Flash sin copiarlos a SRAM (Zero-Copy)
-    // Devuelve true si la carga fue exitosa.
+    // Loads the weights mapped in Flash memory without copying them to SRAM (Zero-Copy)
+    // Returns true if the load was successful.
     bool Load(const unsigned char* omnibit_data, size_t length);
 
-    // Bucle de inferencia. Devuelve la acción procesada por la red.
+    // Inference loop. Returns the action processed by the network.
     std::vector<float> Step(const float* sensors, float dt, float abs_time);
 
     // Getters
@@ -25,25 +25,25 @@ public:
 private:
     bool is_loaded;
     
-    // Dimensiones
+    // Dimensions
     uint32_t input_dim_;
     uint32_t d_model_;
     uint32_t output_dim_;
     uint32_t backbone_units_;
     uint32_t total_weights_;
     
-    // Búferes asignados estáticamente en clase (previene fragmentación OOM)
-    // Máximos razonables (256) garantizan SRAM determinista constante
+    // Statically allocated buffers (prevents OOM fragmentation)
+    // Reasonable maximums (256) guarantee constant deterministic SRAM
     float latents_[256];
     float state_buffer_[256]; 
     float b_state_[256];
     float b_time_[256];
     float x_in_[256 + 256]; // input_dim + d_model
     
-    // Punteros a la Flash
+    // Pointers to Flash (DROM)
     const float* weights_ptr_;
 
-    // Punteros exactos a las matrices de la BioLiquidCell
+    // Exact pointers to BioLiquidCell matrices
     const float* sensory_w_;
     const float* sensory_b_;
     const float* state_w_;
@@ -60,12 +60,12 @@ private:
     const float* time_b_b_;
     const float* time_scale_;
 
-    // Tubería de Procesamiento Neuronal
+    // Neural Processing Pipeline
     void apply_input_projection(const float* sensors);
     void add_temporal_encoding(float abs_time);
     void apply_bio_liquid_cell(float dt);
     
-    // Utilidades matemáticas
+    // Math Utilities
     float lecun_activation(float x) const { return 1.7159f * std::tanh(0.666f * x); }
     float sigmoid(float x) const { return 1.0f / (1.0f + std::exp(-x)); }
     void matmul(const float* W, const float* b, const float* x, float* out, int rows, int cols);
