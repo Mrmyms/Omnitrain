@@ -4,16 +4,33 @@
 // ============================================================
 // OmniHAL: ESP32 Hardware Abstraction Layer
 // ============================================================
-// Strategy: TRUE ZERO-COPY via DROM memory mapping.
-// The ESP32's Flash is memory-mapped by the MMU into the DROM region.
-// When you read a file from SPIFFS/LittleFS, the OS returns a pointer
-// directly into the Flash address space — no SRAM copy is needed.
+// Strategy: BUFFERED LOAD via SPIFFS/LittleFS.
 //
-// This means a 200KB .omnibit model uses ZERO SRAM for weight storage.
+// NOTE: The Arduino SPIFFS/LittleFS API on ESP32 does NOT expose
+// a raw pointer to the Flash address space (DROM). The filesystem
+// layer copies data through an internal buffer. The only way to
+// achieve true Zero-Copy on ESP32 is to embed the .omnibit as a
+// C-array in Flash (see STM32 HAL for that technique).
+//
+// For most use-cases, this SRAM buffer approach is completely fine:
+// a 200KB model will consume 200KB of SRAM. If you need to save SRAM,
+// use the STM32-style objcopy technique with the ESP-IDF's
+// DRAM_ATTR / RODATA_ATTR linker attributes instead.
+//
+// Toolchain: Arduino ESP32 core (PlatformIO: espressif32)
 // ============================================================
 
 #include <SPIFFS.h>
 #include <cstddef>
+
+// Maximum model size in bytes (default: 200 KB).
+// Reduce this to save SRAM if your model is smaller.
+#ifndef OMNI_ESP32_MAX_BRAIN_BYTES
+#define OMNI_ESP32_MAX_BRAIN_BYTES (200 * 1024)
+#endif
+
+// Static buffer to hold the loaded .omnibit weights in SRAM.
+static uint8_t _omni_esp32_brain_buf[OMNI_ESP32_MAX_BRAIN_BYTES];
 
 struct OmniHALResult {
     const unsigned char* data;
@@ -30,18 +47,28 @@ inline OmniHALResult OmniHAL_LoadBrain(const char* path = "/bot_brain.omnibit") 
 
     File f = SPIFFS.open(path, "r");
     if (!f) {
-        return result; // File not found
+        return result; // File not found in SPIFFS partition
     }
 
-    // On ESP32, SPIFFS.open() on a memory-mapped file returns a pointer
-    // directly into the DROM (read-only data in Flash).
-    // This is the Zero-Copy mechanism.
-    result.length = f.size();
-    result.data   = reinterpret_cast<const unsigned char*>(f.read);
-    result.ok     = (result.length > 28);
+    size_t file_size = f.size();
+    size_t max_size  = sizeof(_omni_esp32_brain_buf);
 
-    // Note: Do NOT call f.close() if you are holding a Zero-Copy pointer.
-    // The pointer remains valid as long as SPIFFS is mounted.
+    if (file_size > max_size || file_size < 28) {
+        f.close();
+        return result; // File too large or too small to be a valid .omnibit
+    }
+
+    // Read the .omnibit into the static SRAM buffer
+    size_t bytes_read = f.read(_omni_esp32_brain_buf, file_size);
+    f.close();
+
+    if (bytes_read != file_size) {
+        return result; // Partial read error
+    }
+
+    result.data   = _omni_esp32_brain_buf;
+    result.length = file_size;
+    result.ok     = true;
     return result;
 }
 

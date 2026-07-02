@@ -41,8 +41,11 @@ bool OmniEngine::Load(const unsigned char* omnibit_data, size_t length) {
     // Input Projector: W[d_model x input_dim] + b[d_model]
     offset += (input_dim_ * d_model_) + d_model_;
 
-    // Continuous Temporal Encoding (CTE): inv_freq, amplitude, phase
-    offset += (d_model_ / 2) * 2 + d_model_;
+    // Continuous Temporal Encoding (CTE):
+    // Exporter saves: inv_freq[d/2] + amplitude[d] + phase[d/2] = 2*d total
+    offset += (d_model_ / 2);  // inv_freq
+    offset += d_model_;        // amplitude
+    offset += (d_model_ / 2);  // phase
 
     // BioLiquidCell
     uint32_t in_size   = input_dim_ + d_model_;
@@ -112,15 +115,22 @@ void OmniEngine::apply_input_projection(const float* sensors) {
 }
 
 void OmniEngine::add_temporal_encoding(float abs_time) {
+    // Offsets must mirror the exact export order in esp32_exporter.py:
+    //   push_tensor(cte.inv_freq)   -> shape [d/2]
+    //   push_tensor(cte.amplitude)  -> shape [d]
+    //   push_tensor(cte.phase)      -> shape [d/2]
     uint32_t proj_offset = (input_dim_ * d_model_) + d_model_;
-    const float* inv_freq = weights_ptr_ + proj_offset;
-    const float* amplitude = inv_freq + (d_model_ / 2);
-    const float* phase = amplitude + d_model_;
+    const float* inv_freq  = weights_ptr_ + proj_offset;
+    const float* amplitude = inv_freq  + (d_model_ / 2);  // offset by d/2
+    const float* phase     = amplitude + d_model_;         // offset by d (amplitude is full d_model_)
 
+    // PyTorch cat([sin, cos], dim=-1) layout:
+    // latents_[0 .. d/2-1]   += sin(t * inv_freq[i] + phase[i]) * amplitude[i]
+    // latents_[d/2 .. d-1]   += cos(t * inv_freq[i] + phase[i]) * amplitude[d/2 + i]
     for (uint32_t i = 0; i < d_model_ / 2; ++i) {
         float arg = abs_time * inv_freq[i] + phase[i];
-        latents_[i]                += std::sin(arg) * amplitude[i];
-        latents_[i + (d_model_/2)] += std::cos(arg) * amplitude[i + (d_model_/2)];
+        latents_[i]                 += std::sin(arg) * amplitude[i];
+        latents_[i + (d_model_/2)]  += std::cos(arg) * amplitude[i + (d_model_/2)];
     }
 }
 
