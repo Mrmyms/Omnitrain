@@ -17,7 +17,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="omnitrain",
-    version="1.0.1",
+    version="1.1.0",
     ext_modules=ext_modules,
     install_requires=["numpy", "torch", "rich", "pyyaml", "prompt_toolkit>=3.0", "pydantic"],
     long_description=long_description,

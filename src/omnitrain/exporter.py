@@ -178,15 +178,15 @@ class OmniExporter:
         
         logging.info(f"Running Qualcomm SDK Converter: {' '.join(cmd)}")
         try:
-            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            _ = subprocess.run(cmd, check=True, capture_output=True, text=True)
             logging.info(f"✅ DLC successfully generated: {dlc_path}")
             return True
         except subprocess.CalledProcessError as e:
-            logging.error(f"❌ SNPE Conversion Failed. Is the SDK in your PATH?")
+            logging.error("❌ SNPE Conversion Failed. Is the SDK in your PATH?")
             logging.error(e.stderr)
             return False
         except FileNotFoundError:
-            logging.error(f"❌ 'snpe-onnx-to-dlc' not found. Please install the Qualcomm Neural Processing SDK.")
+            logging.error("❌ 'snpe-onnx-to-dlc' not found. Please install the Qualcomm Neural Processing SDK.")
             return False
 
     def export_for_tensorrt(self, core, heads, export_path: str, max_batch: int = 16, max_tokens: int = 128):

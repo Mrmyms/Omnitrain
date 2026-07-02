@@ -1,16 +1,11 @@
 from .exporter import OmniExporter
 from .fusion_core import LiquidFusionCore
-
 from .token_bus import TokenBus
-from omnitrain.exporter import OmniExporter
-from omnitrain.token_bus import TokenBus
 from rich.console import Console
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
 from rich.table import Table
-from typing import Dict, Any
-from typing import Dict, List
 from typing import Dict, List, Optional, Any
 import csv
 import json
@@ -440,7 +435,7 @@ class ProtoStreamLogger:
         dim = data.size
         
         # Format: d=double, B=unsigned char, I=unsigned int, f=float
-        header = struct.pack(f"<dBBI", timestamp, m_len, 0, dim) # 0 is padding
+        header = struct.pack("<dBBI", timestamp, m_len, 0, dim) # 0 is padding
         self.buffer.extend(header)
         self.buffer.extend(m_bytes)
         self.buffer.extend(data.tobytes())
@@ -500,4 +495,4 @@ if __name__ == "__main__":
     data = np.random.rand(512).astype('float32')
     logger.log_token("camera", time.time(), data)
     logger.close()
-    print(f"Logged 1 compressed token to telemetry_test.omni.zstd")
+    print("Logged 1 compressed token to telemetry_test.omni.zstd")

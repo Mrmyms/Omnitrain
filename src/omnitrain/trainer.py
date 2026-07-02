@@ -246,12 +246,12 @@ class Trainer:
                         target = batch['targets'][target_key][:, t].to(device)
 
                         if isinstance(head, RegressionHead):
-                            l = self.criterion_mse(pred, target)
-                            metrics['policy'] += l.detach()
+                            loss_val = self.criterion_mse(pred, target)
+                            metrics['policy'] += loss_val.detach()
                         else:
-                            l = self.criterion_ce(pred, target)
-                            metrics['safety'] += l.detach()
-                        step_loss += l
+                            loss_val = self.criterion_ce(pred, target)
+                            metrics['safety'] += loss_val.detach()
+                        step_loss += loss_val
 
                 
                 shield_out = self.shield(current_step_latents, sensor_batch=batch['hw_sensors'][:, t].to(device))

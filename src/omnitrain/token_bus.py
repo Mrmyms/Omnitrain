@@ -388,10 +388,12 @@ class TokenBus:
                                 shm = shared_memory.SharedMemory(name=f"{prefix}_{suffix}")
                                 shm.unlink()
                                 shm.close()
-                            except: pass
+                            except Exception:
+                                pass
                         os.remove(reg_file)
                         print(f"[TokenBus] Reaper: Cleaned orphaned session {sid}")
-                except: pass
+                except Exception:
+                    pass
 
         # 2. Fallback: Brute force sweep of /dev/shm (Linux only)
         if os.path.exists('/dev/shm'):
@@ -401,4 +403,5 @@ class TokenBus:
                     shm = shared_memory.SharedMemory(name=name)
                     shm.unlink()
                     shm.close()
-                except: pass
+                except Exception:
+                    pass

@@ -70,10 +70,10 @@ class EdgeCPAIBrain:
         logging.info("🧠 [AI Brain] Loop started at 30Hz")
         while self.running:
             # 1. Capture Camera/LiDAR (Simulated)
-            dummy_vision = torch.randn(1, 3, 224, 224)
+            _dummy_vision = torch.randn(1, 3, 224, 224)
             
             # 2. Check hardware telemetry from Action Brain
-            telemetry = self.rpc.receive_telemetry()
+            _telemetry = self.rpc.receive_telemetry()
             
             # 3. Inference (BioConectomaHub evaluating the environment)
             

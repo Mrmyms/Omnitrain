@@ -55,7 +55,6 @@ class AsyncSensorAligner(nn.Module):
         delta_ts = {}
 
         B = current_time.shape[0]
-        device = current_time.device
 
         all_modalities = set(current_latents.keys()).union(latent_buffer.buffer.keys())
 

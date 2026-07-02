@@ -184,7 +184,7 @@ class LiquidTrainer:
                 Layout(name="safety", ratio=1)
             )
 
-            with Live(layout, refresh_per_second=5, screen=False) as live:
+            with Live(layout, refresh_per_second=5, screen=False):
                 for metrics in self.trainer.fit(csv_path, epochs=epochs):
                     last_metrics = metrics
                     

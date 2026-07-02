@@ -130,7 +130,7 @@ class SignalSpatialMixer(nn.Module):
                 S_prev: (B, D, D) - Cumulative KV matrix
                 Z_prev: (B, D, 1) - Cumulative K vector (denominator state)
         """
-        B, D = latents.size(0), latents.size(-1)
+        _, _ = latents.size(0), latents.size(-1)
         
         # Kernel: ELU+1 ensures non-negativity for stable linear attention
         Q = torch.nn.functional.elu(self.q_proj(latents)) + 1.0  # (B, N_q, D)
@@ -393,7 +393,7 @@ class OmniBrainHub(nn.Module):
             )
 
     def forward(self, x: torch.Tensor, dt: torch.Tensor, h_states: Dict[str, Tuple]):
-        B = x.size(0)
+        _ = x.size(0)
         brain_outputs = {}
         next_states = {}
 
@@ -1061,13 +1061,13 @@ class BioConectomaHub(nn.Module):
         # The heads (ff1, ff2, time_a, time_b) operate on backbone_units → hidden_size.
         # We apply recurrence sparsity to the head weights.
         hidden_size = recurrence_mask.size(0)
-        backbone_units = cell.backbone_units
+        _backbone_units = cell.backbone_units
         
         # For the backbones' first layers: mask the recurrent (hidden) portion of the input
         for bb in [cell.backbone_state, cell.backbone_time]:
             bb_first = bb[0]  # nn.Linear(input_size + hidden_size, units)
             bb_units = bb_first.weight.size(0)
-            bb_in = bb_first.weight.size(1)  # input_size + hidden_size
+            _bb_in = bb_first.weight.size(1)  # input_size + hidden_size
             
             input_part = torch.ones((bb_units, input_size), device=recurrence_mask.device)
             
