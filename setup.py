@@ -17,9 +17,9 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="omnitrain",
-    version="1.1.2",
+    version="1.2.0",
     ext_modules=ext_modules,
-    install_requires=["numpy", "torch", "rich", "pyyaml", "prompt_toolkit>=3.0", "pydantic"],
+    install_requires=["numpy", "torch", "rich", "pyyaml", "prompt_toolkit>=3.0", "pydantic", "pyserial"],
     long_description=long_description,
     long_description_content_type="text/markdown",
     cmdclass={"build_ext": build_ext} if ext_modules else {},

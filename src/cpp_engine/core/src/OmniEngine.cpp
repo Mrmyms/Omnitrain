@@ -48,11 +48,11 @@ bool OmniEngine::Load(const unsigned char* omnibit_data, size_t length) {
     offset += (d_model_ / 2);  // phase
 
     // BioLiquidCell
-    uint32_t in_size   = input_dim_ + d_model_;
+    uint32_t in_size   = d_model_ + d_model_; // BioLiquidCell input is mapped latent (d_model) + hidden (d_model)
     uint32_t half_units = backbone_units_ / 2;
 
-    sensory_w_ = weights_ptr_ + offset; offset += input_dim_;
-    sensory_b_ = weights_ptr_ + offset; offset += input_dim_;
+    sensory_w_ = weights_ptr_ + offset; offset += d_model_;
+    sensory_b_ = weights_ptr_ + offset; offset += d_model_;
 
     state_w_   = weights_ptr_ + offset; offset += backbone_units_ * in_size;
     state_b_   = weights_ptr_ + offset; offset += backbone_units_;
@@ -135,16 +135,16 @@ void OmniEngine::add_temporal_encoding(float abs_time) {
 }
 
 void OmniEngine::apply_bio_liquid_cell(float dt) {
-    // Affine sensory mapping
-    for (uint32_t i = 0; i < input_dim_; ++i) {
+    // Affine sensory mapping (mapped latent size is d_model_)
+    for (uint32_t i = 0; i < d_model_; ++i) {
         x_in_[i] = latents_[i] * sensory_w_[i] + sensory_b_[i];
     }
     // Concatenate previous state
     for (uint32_t i = 0; i < d_model_; ++i) {
-        x_in_[input_dim_ + i] = state_buffer_[i];
+        x_in_[d_model_ + i] = state_buffer_[i];
     }
 
-    uint32_t in_size    = input_dim_ + d_model_;
+    uint32_t in_size    = d_model_ + d_model_;
     uint32_t half_units = backbone_units_ / 2;
 
     // Backbone State

@@ -433,6 +433,7 @@ class LiquidFusionCore(nn.Module):
 
         self.latents = nn.Parameter(torch.randn(1, n_latents, d_model))
         # O(N) SignalSpatialMixer
+        self.use_spatial_mixer = model_cfg.get('use_spatial_mixer', True)
         self.use_fused_kernels = model_cfg.get('use_fused_kernels', True)
         self.precision = model_cfg.get('precision', 'fp32') # fp32, fp16, int8, nf4
         
@@ -497,7 +498,15 @@ class LiquidFusionCore(nn.Module):
             )
         else:
             self.brain_mode = "legacy"
-            self.brain = BioLiquidCell(d_model, d_model, continual_learning=continual, eta=eta)
+            backbone_units = model_cfg.get('backbone_units', 128)
+            backbone_layers = model_cfg.get('backbone_layers', 1)
+            self.brain = BioLiquidCell(
+                d_model, d_model,
+                backbone_units=backbone_units,
+                backbone_layers=backbone_layers,
+                continual_learning=continual,
+                eta=eta
+            )
 
     def reset_state(self, batch_size: Optional[int] = None, device: Optional[torch.device] = None):
         """Reset hidden states and temporal buffers."""
@@ -558,10 +567,13 @@ class LiquidFusionCore(nn.Module):
         #    Each step is treated independently — safe for ONNX tracing.
         #    tokens must be 3D: [B, N_k, d_model] — unsqueeze(1) ensures N_k=1
         x_token = x.unsqueeze(1).contiguous()                   # [B, 1, d_model]
-        latents = self.latents.expand(B, -1, -1).contiguous()   # [B, N, d_model]
-        latents_fused, _ = self._spatial_mixer_uncompiled(
-            latents, x_token, prev_state=None
-        )                                                        # [B, N, d_model]
+        if self.use_spatial_mixer:
+            latents = self.latents.expand(B, -1, -1).contiguous()   # [B, N, d_model]
+            latents_fused, _ = self._spatial_mixer_uncompiled(
+                latents, x_token, prev_state=None
+            )                                                        # [B, N, d_model]
+        else:
+            latents_fused = x_token
 
         # 4. Expand state_in across all N latents (shared state representation)
         x_flat   = latents_fused.reshape(B * N, self.d_model)  # [B*N, d_model]
@@ -670,13 +682,16 @@ class LiquidFusionCore(nn.Module):
         time_embeddings = self.temporal_encoder(abs_time)
         tokens = tokens + time_embeddings
 
-        # Legacy/NCP/Hub paths (use spatial_mixer)
-        latents = self.latents.expand(batch_size, -1, -1)
-        # O(N) Spatial Fusion with Cumulative Recurrence
-        latents_fused, next_mixer_state = self.spatial_mixer(
-            latents, tokens, prev_state=self._last_mixer_state
-        )
-        self._last_mixer_state = next_mixer_state
+        if self.use_spatial_mixer:
+            # Legacy/NCP/Hub paths (use spatial_mixer)
+            latents = self.latents.expand(batch_size, -1, -1)
+            # O(N) Spatial Fusion with Cumulative Recurrence
+            latents_fused, next_mixer_state = self.spatial_mixer(
+                latents, tokens, prev_state=self._last_mixer_state
+            )
+            self._last_mixer_state = next_mixer_state
+        else:
+            latents_fused = tokens
 
 
         # 2. Time Evolution
@@ -790,12 +805,15 @@ class LiquidFusionCore(nn.Module):
             tokens = tokens_seq[:, t]
             dt_t = dt_seq[:, t]
             
-            # Legacy/NCP/Hub paths (use spatial_mixer)
-            latents = self.latents.expand(B, -1, -1)
-            latents_fused, next_mixer_state = self.spatial_mixer(
-                latents, tokens, prev_state=self._last_mixer_state
-            )
-            self._last_mixer_state = next_mixer_state
+            if self.use_spatial_mixer:
+                # Legacy/NCP/Hub paths (use spatial_mixer)
+                latents = self.latents.expand(B, -1, -1)
+                latents_fused, next_mixer_state = self.spatial_mixer(
+                    latents, tokens, prev_state=self._last_mixer_state
+                )
+                self._last_mixer_state = next_mixer_state
+            else:
+                latents_fused = tokens
             
             x_flat = latents_fused.reshape(B * self.n_latents, -1)
             dt_flat_t = dt_t.view(B, 1).expand(B, self.n_latents).reshape(B * self.n_latents, 1)

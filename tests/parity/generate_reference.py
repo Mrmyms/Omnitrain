@@ -27,10 +27,9 @@ PARITY_DIR = os.path.dirname(__file__)
 OMNIBIT_PATH = os.path.join(PARITY_DIR, "parity_brain.omnibit")
 REFERENCE_PATH = os.path.join(PARITY_DIR, "reference_outputs.json")
 
-# Fixed small model for reproducibility
 INPUT_DIM = 4
 D_MODEL   = 16
-N_LATENTS = 2
+N_LATENTS = 1
 BACKBONE  = 8
 
 # Fixed seed for reproducibility
@@ -42,7 +41,7 @@ def main():
         n_latents=N_LATENTS,
         d_model=D_MODEL,
         input_dim=INPUT_DIM,
-        config={}  # Legacy mode
+        config={'model': {'backbone_units': BACKBONE, 'use_spatial_mixer': False}}
     )
     model.eval()
 
@@ -53,6 +52,7 @@ def main():
         input_dim=INPUT_DIM,
         d_model=D_MODEL,
         output_dim=2,
+        backbone_units=BACKBONE,
         filename="parity_brain.omnibit"
     )
 
@@ -73,22 +73,26 @@ def main():
     ]
 
     state = torch.zeros(1, D_MODEL)
-    dt    = torch.tensor([0.01])
+    abs_time = 0.0
+    dt_val = 0.01
 
     with torch.no_grad():
         for i, inp in enumerate(test_inputs):
             sensors = torch.tensor([inp])
-            action, state = model.step_stateless(sensors, state, dt)
+            # The third parameter of step_stateless is the absolute time input to CTE
+            action, state = model.step_stateless(sensors, state, torch.tensor([abs_time]))
+            action_sliced = action[:, :2] # Slice to output_dim=2 to match C++ behavior
 
             reference["steps"].append({
                 "step": i,
                 "input": inp,
-                "dt": 0.01,
+                "dt": dt_val,
                 "state_in":  state.tolist()[0],   # Previous state (before this step)
-                "action":    action.tolist()[0],
+                "action":    action_sliced.tolist()[0],
                 "state_out": state.tolist()[0],
             })
-            print(f"  Step {i}: action[:4] = {action[0, :4].tolist()}")
+            print(f"  Step {i}: action[:4] = {action_sliced[0].tolist()}")
+            abs_time += dt_val
 
     with open(REFERENCE_PATH, 'w') as f:
         json.dump(reference, f, indent=2)
