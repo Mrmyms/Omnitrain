@@ -514,6 +514,70 @@ class LiquidFusionCore(nn.Module):
         if batch_size is not None and device is not None:
             self._abs_time_buf = torch.zeros(batch_size, 1, device=device, dtype=torch.float64)
 
+    def step_stateless(self, sensors: torch.Tensor, state_in: torch.Tensor,
+                       dt: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Stateless single-step forward pass for ONNX/TensorRT export (Jetson).
+
+        All state is explicit — no internal buffers are read or written.
+        This makes the function fully traceable by torch.onnx.export().
+
+        Only supports 'legacy' brain mode (BioLiquidCell). For other brain
+        modes, use the standard forward() method with internal state management.
+
+        Args:
+            sensors:   [B, input_dim]  — raw sensor vector
+            state_in:  [B, d_model]    — previous hidden state (zeros on first step)
+            dt:        [B]             — time delta in seconds since last call
+
+        Returns:
+            action:    [B, d_model]    — output embedding (slice for motor outputs)
+            state_out: [B, d_model]    — new hidden state (pass as state_in next step)
+        """
+        if self.brain_mode != "legacy":
+            raise RuntimeError(
+                f"step_stateless() requires brain_mode='legacy' (BioLiquidCell). "
+                f"Current mode: '{self.brain_mode}'. "
+                f"Initialize model with an empty config dict for edge export."
+            )
+
+        B = sensors.size(0)
+        N = self.n_latents
+
+        # 1. Input projection (use the registered default projector — ONNX-safe)
+        x = self.input_projector.default_proj(sensors)          # [B, d_model]
+
+        # 2. Continuous Temporal Encoding
+        #    dt is used as an absolute time proxy (stateless approximation).
+        #    temporal_encoder returns [B, 1, d_model] — squeeze the middle dim.
+        abs_t = dt.unsqueeze(-1) if dt.dim() == 1 else dt       # [B, 1]
+        te = self.temporal_encoder(abs_t.float()).squeeze(1)    # [B, d_model]
+        x = x + te                                              # [B, d_model]
+
+        # 3. Stateless spatial mix (no cumulative cross-attention state).
+        #    Each step is treated independently — safe for ONNX tracing.
+        #    tokens must be 3D: [B, N_k, d_model] — unsqueeze(1) ensures N_k=1
+        x_token = x.unsqueeze(1).contiguous()                   # [B, 1, d_model]
+        latents = self.latents.expand(B, -1, -1).contiguous()   # [B, N, d_model]
+        latents_fused, _ = self._spatial_mixer_uncompiled(
+            latents, x_token, prev_state=None
+        )                                                        # [B, N, d_model]
+
+        # 4. Expand state_in across all N latents (shared state representation)
+        x_flat   = latents_fused.reshape(B * N, self.d_model)  # [B*N, d_model]
+        dt_flat  = dt.view(B, 1).expand(B, N).reshape(B * N, 1)  # [B*N, 1]
+        h_flat   = state_in.unsqueeze(1).expand(B, N, self.d_model).reshape(B * N, self.d_model)
+
+        # 5. BioLiquidCell step (the CfC brain)
+        h_next_flat = self.brain(x_flat, h_flat, dt_flat)       # [B*N, d_model]
+        h_next = h_next_flat.reshape(B, N, self.d_model)        # [B, N, d_model]
+
+        # 6. Mean-pool latents into a compact action/state vector
+        action    = h_next.mean(dim=1)                          # [B, d_model]
+        state_out = action                                       # state carries forward
+
+        return action, state_out
+
     def forward(self, sensor_data, dt: torch.Tensor, prev_latents: Optional[torch.Tensor] = None, modal_id: Optional[str] = None, abs_time: Optional[torch.Tensor] = None, is_tokenized: bool = False):
         
         # Sequence Detection

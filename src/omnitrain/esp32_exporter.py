@@ -94,6 +94,7 @@ class ESP32Exporter:
         if config_path:
             self._export_hw_config(config_path, self.output_dir / "esp32_hw_config.h")
 
+        return out_path
     def _export_hw_config(self, yaml_path, out_header):
         yaml_file = Path(yaml_path)
         if not yaml_file.exists():
