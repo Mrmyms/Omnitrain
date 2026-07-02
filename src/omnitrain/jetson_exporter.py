@@ -64,7 +64,7 @@ class JetsonExporter:
 
         # Dummy inputs (batch=1 for edge deployment)
         dummy_sensors  = torch.zeros(1, input_dim,  dtype=torch.float32)
-        dummy_state_in = torch.zeros(1, d_model,    dtype=torch.float32)
+        dummy_state_in = torch.zeros(1, getattr(model, 'n_latents', 1), d_model, dtype=torch.float32)
         dummy_dt       = torch.tensor([0.01],       dtype=torch.float32)
 
         print(f"[JetsonExporter] Tracing model for ONNX export...")

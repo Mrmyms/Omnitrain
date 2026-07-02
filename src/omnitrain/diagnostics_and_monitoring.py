@@ -173,7 +173,7 @@ def perform_health_check():
         else:
             add_result("Brain", "OK", f"Bundle Found: {omni_files[0]}")
             
-        from omnitrain.fusion_core import LiquidFusionCore
+        # Core already imported at top level
         core = LiquidFusionCore(d_model=256, n_latents=32, input_dim=512, config={})
         
         # Test RK4 stability
@@ -195,11 +195,6 @@ def perform_health_check():
     print(f"FINAL VERDICT: {results['overall_status']}")
     print("Report saved to production_report.json")
     print("=" * 50 + "\n")
-
-
-if __name__ == "__main__":
-    perform_health_check()
-
 
 
 def generate_dashboard(bus: TokenBus, monitor: OmniHealthMonitor) -> Layout:
@@ -264,8 +259,6 @@ def run_monitor(bus: TokenBus, duration: Optional[float] = None):
 
 
 
-console = Console()
-
 class OmniRecorder:
     """
     OmniTrain Recorder (High-Efficiency).
@@ -293,7 +286,7 @@ class OmniRecorder:
         for input_cfg in self.config.get('inputs', []):
             m_id = input_cfg['id']
             dim = input_cfg.get('dim', 1)
-            self.latest_data[m_id] = np.zeros(dim)
+            self.latest_data[m_id] = np.zeros(dim, dtype=np.float32)
         
         for head_cfg in self.config.get('heads', []):
             h_id = head_cfg['id']
@@ -301,7 +294,7 @@ class OmniRecorder:
             if head_cfg.get('num_classes', 0) > 0:
                 self.latest_data[h_id] = 0
             else:
-                self.latest_data[h_id] = np.zeros(dim)
+                self.latest_data[h_id] = np.zeros(dim, dtype=np.float32)
 
     def _build_headers(self) -> List[str]:
         headers = ['timestamp']
@@ -324,6 +317,7 @@ class OmniRecorder:
         """
         High-Fidelity Event-Driven Recording Loop.
         """
+        console = Console()
         # Lazy initialization of the bus to support multiprocessing pickling
         if self.bus is None:
             self.bus = TokenBus(session_id=self.session_id, create=False)
@@ -355,7 +349,7 @@ class OmniRecorder:
                     new_tokens, next_idx = self.bus.get_since_index(self.last_read_idx)
                     
                     if not new_tokens:
-                        time.sleep(0.002) # Ultra-short sleep
+                        time.sleep(0.005) # Slightly longer sleep to reduce CPU polling
                         continue
 
                     
@@ -496,3 +490,6 @@ if __name__ == "__main__":
     logger.log_token("camera", time.time(), data)
     logger.close()
     print("Logged 1 compressed token to telemetry_test.omni.zstd")
+    
+    # Run health check
+    perform_health_check()

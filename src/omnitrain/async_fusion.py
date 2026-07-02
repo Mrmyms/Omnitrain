@@ -7,14 +7,16 @@ class ModalityLatentBuffer:
     Zero-Order Hold (ZOH) buffer for latent space embeddings.
     Retains the last known latent embedding for a modality if no new data arrives.
     """
-    def __init__(self, device: torch.device):
+    def __init__(self, device: Optional[torch.device] = None):
         self.buffer: Dict[str, torch.Tensor] = {}
         self.timestamps: Dict[str, torch.Tensor] = {}
-        self.device = device
+        self.device = device if device is not None else torch.device("cpu")
 
     def update(self, modal_id: str, latent: torch.Tensor, timestamp: torch.Tensor):
-        self.buffer[modal_id] = latent.to(self.device)
-        self.timestamps[modal_id] = timestamp.to(self.device)
+        # Dynamically adapt device to match incoming tensors
+        self.device = latent.device
+        self.buffer[modal_id] = latent
+        self.timestamps[modal_id] = timestamp
 
     def get_latest(self, modal_id: str, default_shape: Tuple[int, ...]) -> torch.Tensor:
         if modal_id in self.buffer:
@@ -49,7 +51,7 @@ class AsyncSensorAligner(nn.Module):
             last_times: dict keeping track of when each modality was last updated
         Returns:
             aligned_latents: Dict of latents to use for this step (new or ZOH)
-            delta_ts: Dict of time deltas for each modality to evolve
+            delta_ts: Dict of time deltas for each modality to evolve (note: global dt is preferred in Hub)
         """
         aligned_latents = {}
         delta_ts = {}
@@ -82,6 +84,8 @@ class PerModalityODESolver(nn.Module):
     """
     Independent ODE solver for a specific modality.
     Prevents 'neural double-evolution' by evolving only when necessary.
+    NOTE: This class is currently unused in the production code path but preserved
+    for future experimental features.
     """
     def __init__(self, d_model: int):
         super().__init__()

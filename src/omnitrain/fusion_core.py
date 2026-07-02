@@ -169,8 +169,8 @@ class SignalSpatialMixer(nn.Module):
         else:
             out = self.norm(res)
         
-        return out, (S_curr.detach() if not self.training else S_curr.detach().requires_grad_(True), 
-                     Z_curr.detach() if not self.training else Z_curr.detach().requires_grad_(True))
+        return out, (S_curr.detach() if not self.training else S_curr, 
+                     Z_curr.detach() if not self.training else Z_curr)
 
 
 
@@ -536,12 +536,12 @@ class LiquidFusionCore(nn.Module):
 
         Args:
             sensors:   [B, input_dim]  — raw sensor vector
-            state_in:  [B, d_model]    — previous hidden state (zeros on first step)
+            state_in:  [B, N, d_model] — previous hidden state (zeros on first step)
             dt:        [B]             — time delta in seconds since last call
 
         Returns:
             action:    [B, d_model]    — output embedding (slice for motor outputs)
-            state_out: [B, d_model]    — new hidden state (pass as state_in next step)
+            state_out: [B, N, d_model] — new hidden state (pass as state_in next step)
         """
         if self.brain_mode != "legacy":
             raise RuntimeError(
@@ -575,18 +575,23 @@ class LiquidFusionCore(nn.Module):
         else:
             latents_fused = x_token
 
-        # 4. Expand state_in across all N latents (shared state representation)
+        # 4. Flatten state_in for the N latents
         x_flat   = latents_fused.reshape(B * N, self.d_model)  # [B*N, d_model]
         dt_flat  = dt.view(B, 1).expand(B, N).reshape(B * N, 1)  # [B*N, 1]
-        h_flat   = state_in.unsqueeze(1).expand(B, N, self.d_model).reshape(B * N, self.d_model)
+        
+        # Support legacy [B, d_model] and correct [B, N, d_model]
+        if state_in.dim() == 2:
+            h_flat = state_in.unsqueeze(1).expand(B, N, self.d_model).reshape(B * N, self.d_model)
+        else:
+            h_flat = state_in.reshape(B * N, self.d_model)
 
         # 5. BioLiquidCell step (the CfC brain)
         h_next_flat = self.brain(x_flat, h_flat, dt_flat)       # [B*N, d_model]
         h_next = h_next_flat.reshape(B, N, self.d_model)        # [B, N, d_model]
 
-        # 6. Mean-pool latents into a compact action/state vector
+        # 6. Mean-pool latents into a compact action vector
         action    = h_next.mean(dim=1)                          # [B, d_model]
-        state_out = action                                       # state carries forward
+        state_out = h_next                                      # [B, N, d_model] - state carries forward independently
 
         return action, state_out
 
@@ -701,15 +706,17 @@ class LiquidFusionCore(nn.Module):
         dt_flat = dt.view(B, 1).expand(B, N).reshape(B * N, 1)
 
         if self.brain_mode == "hub":
-            h_out, next_states = self.brain(x_flat, dt_flat, self._last_brain_state or {})
+            h_state = prev_latents if isinstance(prev_latents, dict) else (self._last_brain_state or {})
+            h_out, next_states = self.brain(x_flat, dt_flat, h_state)
             self._last_brain_state = next_states
             h_next = h_out
         elif self.brain_mode == "mixed":
             # MixedMemoryCfC requires (h_cfc, h_lstm, c_lstm)
-            if self._last_brain_state is None:
-                self._last_brain_state = self.brain.init_state(B * N, x_flat.device)
+            h_state = prev_latents if isinstance(prev_latents, tuple) else self._last_brain_state
+            if h_state is None:
+                h_state = self.brain.init_state(B * N, x_flat.device)
             
-            h_next, next_state = self.brain(x_flat, self._last_brain_state, dt_flat)
+            h_next, next_state = self.brain(x_flat, h_state, dt_flat)
             self._last_brain_state = next_state
         elif self.brain_mode == "ncp":
             # If prev_latents is a tuple, it's the full (output, internal_state)
@@ -820,13 +827,15 @@ class LiquidFusionCore(nn.Module):
             
             # Brain Step
             if self.brain_mode == "hub":
-                h_out, next_states = self.brain(x_flat, dt_flat_t, self._last_brain_state or {})
+                h_state = curr_latents if isinstance(curr_latents, dict) else (self._last_brain_state or {})
+                h_out, next_states = self.brain(x_flat, dt_flat_t, h_state)
                 self._last_brain_state = next_states
                 curr_latents = h_out
             elif self.brain_mode == "mixed":
-                if self._last_brain_state is None:
-                    self._last_brain_state = self.brain.init_state(B * self.n_latents, x_flat.device)
-                curr_latents, next_state = self.brain(x_flat, self._last_brain_state, dt_flat_t)
+                h_state = curr_latents if isinstance(curr_latents, tuple) else self._last_brain_state
+                if h_state is None:
+                    h_state = self.brain.init_state(B * self.n_latents, x_flat.device)
+                curr_latents, next_state = self.brain(x_flat, h_state, dt_flat_t)
                 self._last_brain_state = next_state
             elif self.brain_mode == "ncp":
                 h_state = None

@@ -50,16 +50,23 @@ class SignalCorruptor:
     @staticmethod
     def apply_dropout(tensor: torch.Tensor, drop_prob: float = 0.1, fill_value: float = 0.0) -> torch.Tensor:
         """Randomly drops signals. Example: Sensor failures, missing market data."""
-        
+        if drop_prob <= 0.0:
+            return tensor
+        if drop_prob >= 1.0:
+            return torch.full_like(tensor, fill_value)
+            
         mask = (torch.rand_like(tensor) > drop_prob).float()
-        if drop_prob < 1.0:
-            scale = 1.0 / (1.0 - drop_prob)
-            return (tensor * mask * scale) + fill_value * (1 - mask)
-        return fill_value * (1 - mask)
+        scale = 1.0 / (1.0 - drop_prob)
+        return (tensor * mask * scale) + fill_value * (1.0 - mask)
 
     @staticmethod
     def apply_gaussian_noise(tensor: torch.Tensor, std: float = 0.1, clamp_min=None, clamp_max=None) -> torch.Tensor:
         """Adds natural variance. Example: Camera static, financial volatility."""
+        if std <= 0.0:
+            if clamp_min is not None or clamp_max is not None:
+                return torch.clamp(tensor, min=clamp_min, max=clamp_max)
+            return tensor
+            
         noise = torch.randn_like(tensor) * std
         noisy = tensor + noise
         if clamp_min is not None or clamp_max is not None:

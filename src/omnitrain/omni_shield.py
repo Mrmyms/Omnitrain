@@ -363,7 +363,7 @@ class OmniShieldGuard(nn.Module):
         cbf_violation = (1 - self.alpha) * h_x - h_next  # > 0 means violated
 
         # Compute Lie derivative: dh_next/du
-        if u_nn.requires_grad:
+        if u_nn.requires_grad and not torch.onnx.is_in_onnx_export():
             # Training mode: full gradient flow
             lg_h = torch.autograd.grad(
                 h_next.sum(), u_nn,
@@ -371,32 +371,28 @@ class OmniShieldGuard(nn.Module):
                 retain_graph=True,
             )[0]
         else:
+            # Fully vectorized finite-difference calculation for ONNX export and edge C++ compatibility.
+            # Avoids Python loops and unsupported torch.func calls.
+            eps = 1e-4
+            B, action_dim = u_nn.shape
             
-            # We use a functional approach to compute the gradient for each batch element
-            # This is significantly faster than the previous finite differences loop.
-            try:
-                from torch.func import vmap, jacrev
-                
-                # Define a local function for a single sample to use with vmap
-                def single_h_next(u_single, state_single):
-                    # Use full RK4 forward pass for mathematical consistency
-                    x_n = self.dynamics(state_single.unsqueeze(0), u_single.unsqueeze(0))
-                    return self.barrier(x_n)
-
-                # Compute Jacobian across the batch
-                lg_h = vmap(jacrev(single_h_next))(u_nn, state).squeeze(1)
-            except (ImportError, RuntimeError):
-                # Fallback to analytical finite differences if torch.func is unavailable
-                eps = 1e-4
-                action_dim = u_nn.shape[1]
-                lg_h_list = []
-                for i in range(action_dim):
-                    u_p = u_nn.clone()
-                    u_p[:, i] += eps
-                    x_next_p = self.dynamics(state, u_p)
-                    h_next_p = self.barrier(x_next_p)
-                    lg_h_list.append((h_next_p - h_next) / eps)
-                lg_h = torch.stack(lg_h_list, dim=1)
+            # Create perturbation matrix: (action_dim, action_dim)
+            eye = torch.eye(action_dim, device=u_nn.device) * eps
+            
+            # Broadcast to compute all perturbations in parallel: (B, action_dim, action_dim)
+            u_p = u_nn.unsqueeze(1) + eye.unsqueeze(0)
+            
+            # Flatten batch and perturbation dimensions to pass through network
+            u_p_flat = u_p.view(B * action_dim, action_dim)
+            state_flat = state.unsqueeze(1).expand(B, action_dim, -1).reshape(B * action_dim, -1)
+            
+            # Compute dynamics and barrier for all perturbed actions simultaneously
+            x_next_p_flat = self.dynamics(state_flat, u_p_flat)
+            h_next_p_flat = self.barrier(x_next_p_flat)
+            
+            # Reshape back to (B, action_dim) and compute gradient
+            h_next_p = h_next_p_flat.view(B, action_dim)
+            lg_h = (h_next_p - h_next.unsqueeze(1)) / eps
 
         
         # Robust projection even when the gradient is near-zero.

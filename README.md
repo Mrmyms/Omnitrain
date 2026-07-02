@@ -1,23 +1,23 @@
-# OmniTrain v2.1.0: Conectoma 
-### Bio-Inspired Sparse Neural Circuits & Formal Safety for Robotics
+# OmniTrain: Bio-Inspired Sparse Neural Circuits & Formal Safety for Robotics
+**Version 2.1.0 | Conectoma Architecture**
 
-> [!WARNING]
-> This project is currently **UNFINISHED** and in **PRE-BETA** phase. Core features and APIs are undergoing active development, testing, and security audits. Use with caution.
-
----
-
-OmniTrain is a production-grade framework for building **Bio-Inspired Conectomas (Hub & Wall architecture)**. It utilizes Closed-form Continuous-time (CfC) networks and Input Convex Neural Networks (ICNN) to provide sub-millisecond, provably safe robotic control on edge hardware (Jetson/Qualcomm).
+> [!NOTE]
+> **Research Status:** OmniTrain is an active research framework designed for high-frequency, safety-critical robotics. It bridges the gap between biological neural efficiency and formal mathematical safety constraints.
 
 ---
 
-## What's New in v2.1 (Update)
+## Abstract
 
-- **Training-Serving Parity**: Automatic capture and application of Z-Score normalization statistics. No more data degradation in deployment.
-- **Lagrangian Stability**: Stabilized primal-dual safety controller using per-sequence dual updates.
-- **Unified Fusion**: Optimized multi-sensor ingestion in `OmniStream` to prevent neural double-evolution.
-- **Kernel Robustness**: Enhanced CLI with kernel-level exception handling for 24/7 mission-critical operation.
-- **Hardware Failsafes**: Improved Tier 1 monitoring with worst-case coverage across all sensor dimensions.
-- **Stabilization**: Passed the Integrity 5-Problem Health Audit (v2.1) ensuring zero-leak SHM and RK4 dynamics parity.
+OmniTrain is a production-grade framework for building **Bio-Inspired Conectomas (Hub & Wall architectures)**. It leverages Closed-form Continuous-time (CfC) networks and Input Convex Neural Networks (ICNNs) to provide sub-millisecond, provably safe robotic control on edge hardware (Jetson, ESP32, Snapdragon). By moving away from dense, synchronous Transformer/LSTM topologies, OmniTrain offers a sparse, asynchronous, and temporally resilient paradigm suitable for out-of-distribution (OOD) physical environments.
+
+---
+
+## Key Innovations in v2.1
+
+- **Continuous-Time Temporal Resilience:** ODE solvers naturally interpolate missing sensor frames and irregular intervals (jitter), outperforming discrete-time architectures like LSTMs.
+- **Asynchronous Sensor Fusion (ZOH):** Zero-Order Hold (ZOH) buffers in the `OmniStream` layer natively fuse disparate sensor frequencies (e.g., 20Hz LiDAR and 1Hz Vision) without causing neural "double-evolution" or artificial latency.
+- **Formal Safety Guarantees (OmniShield):** An integrated Control Barrier Function (CBF) enforced by an ICNN ensures that exploratory or out-of-distribution neural actions are strictly projected back into a mathematically proven safe set in $O(1)$ time.
+- **Zero-Copy Edge Deployment:** Compiles trained PyTorch parameters into the `.omnibit` V3 format, a highly structured binary payload optimized for zero-copy execution on deeply embedded microcontrollers (e.g., ESP32, RP2040) yielding sub-3ms latencies.
 
 ---
 
@@ -25,36 +25,24 @@ OmniTrain is a production-grade framework for building **Bio-Inspired Conectomas
 
 ### 1. Installation
 
-You can install OmniTrain directly from PyPI:
+Install OmniTrain via PyPI:
 ```bash
 pip install omnitrain
 ```
 
-Alternatively, you can install from source:
-
-#### Linux/macOS Source Installation
+Or install from source for development:
 ```bash
 git clone https://github.com/Mrmyms/Omnitrain.git
 cd Omnitrain
-chmod +x setup.sh
-./setup.sh
-```
-
-#### Windows Source Installation
-```powershell
-git clone https://github.com/Mrmyms/Omnitrain.git
-cd Omnitrain
-python -m venv .venv
-.venv\Scripts\activate
 pip install -r requirements.txt
 pip install -e .
 ```
 
 ### 2. Scaffold a New Project
+Initializes project directories, configurations, and data ingestion pipelines.
 ```python
 from omnitrain import ProjectManager
 
-# Set up project folders, default config.yaml, and a training dataset
 ProjectManager.init_project()
 ```
 
@@ -62,67 +50,65 @@ ProjectManager.init_project()
 ```python
 from omnitrain import LiquidTrainer
 
-# Load trainer and fit behavioral and safety policies
+# Instantiate the trainer and fit both behavioral and safety policies
 trainer = LiquidTrainer("config.yaml")
-metrics = trainer.fit("robot_logs.csv", epochs=5)
+metrics = trainer.fit("training_data.csv", epochs=30)
 ```
 
-### 4. Edge Deployment Compile
+### 4. Edge Deployment Compilation
 ```python
 from omnitrain import EdgeDeployer, ESP32Exporter
 
-# Option A: Export to Qualcomm Snapdragon (DLC) or TensorRT
-deployer = EdgeDeployer("models/bot_brain.omni")
-deployer.export(target="tensorrt")
-
-# Option B: Export to Microcontrollers (ESP32) Zero-Copy Binary
+# Export to Microcontrollers (ESP32) Zero-Copy Binary
 exporter = ESP32Exporter(output_dir="esp32_firmware/data")
-exporter.export(model, input_dim=8, d_model=128, output_dim=4, filename="bot_brain.omnibit")
+exporter.export(model, input_dim=64, d_model=128, output_dim=4, filename="model.omnibit")
 ```
 
 ### 5. Multi-process Sensor Runner
 ```python
 from omnitrain import AgentRunner
 
-# Start the real-time TokenBus circular buffer and spawn sensor modalities
+# Instantiate the real-time TokenBus circular buffer and sensor aligners
 runner = AgentRunner("config.yaml")
 runner.start()
 
-# Monitor live circular buffer stream telemetry for 10 seconds
+# Monitor live circular buffer stream telemetry
 runner.run_telemetry(duration=10.0)
 runner.stop()
 ```
 
 ---
 
-## Architecture: The Conectoma v2.1
+## Architecture: The Conectoma Topology
 
 ```mermaid
 graph TD
     S1[Sensors] -->|Z-Score Normalization| H[BioConectomaHub]
-    subgraph "Hub & Wall"
+    subgraph "Hub & Wall Architecture"
         H -->|Sparse Mask| W[Interneuron Wall]
-        W -->|Recurrent| W
+        W -->|Recurrent CfC Dynamics| W
         W -->|Decision| C[Command Layer]
     end
-    C -->|Safe Action| SG[OmniShield v2.1]
-    SG -->|Convex Barrier| M[Motor Output]
+    C -->|Unverified Action| SG[OmniShield Guard]
+    SG -->|CBF Projection| M[Motor Output]
+    
     style H fill:#d1f2ff,stroke:#333
     style W fill:#fff4d1,stroke:#333
+    style SG fill:#ffe6e6,stroke:#333
 ```
 
 ---
 
-## Resources
+## Documentation & Resources
 
-*   **[Technical Deep Dive & Conectoma Spec](docs/CONECTOMA_SPEC.md)**: Official architecture specification, CfC cells, and ICNN barriers.
-*   **[Theoretical Frameworks](docs/THEORETICAL_FRAMEWORKS.md)**: Liquid Networks, ICNNs, and CTMT math.
-*   **[Connectivity Guide](docs/HOW_TO_CONNECT.md)**: Connecting sensors (ROS 2, Isaac Sim, CSV) to TokenBus.
-*   **[LNN Research Database](docs/LIQUID_NETWORKS_DB.md)**: MIT CSAIL papers, benchmarks, and LNN/CfC references.
-*   **[Training Pipeline](docs/TRAINING_PIPELINE.md)**: 5-phase curriculum (Imitation, Safety, Noise, Lagrangian Stability, Pruning).
-*   **[ESP32 Edge Port Guide](docs/ESP32_PORT_GUIDE.md)**: Zero-Copy C++ Engine deployment instructions for 512KB microcontrollers.
+*   **[Technical Deep Dive & Conectoma Spec](docs/CONECTOMA_SPEC.md)**: Official architecture specification detailing CfC cells and ICNN barriers.
+*   **[Theoretical Frameworks](docs/THEORETICAL_FRAMEWORKS.md)**: Mathematical foundations of Liquid Networks, ICNNs, and continuous-time dynamics.
+*   **[Connectivity Guide](docs/HOW_TO_CONNECT.md)**: Integrating sensors (ROS 2, Isaac Sim, TokenBus).
+*   **[LNN Research Database](docs/LIQUID_NETWORKS_DB.md)**: Annotated references spanning MIT CSAIL literature, benchmarks, and Liquid Neural Network proofs.
+*   **[Training Pipeline](docs/TRAINING_PIPELINE.md)**: Phased curriculum covering Imitation, Safety, and Lagrangian Stability.
+*   **[ESP32 Edge Port Guide](docs/ESP32_PORT_GUIDE.md)**: Bare-metal deployment instructions for 512KB microcontrollers.
 
 ---
 
-**OmniTrain Team**
-"Fuse Everything. Trust Nothing. Verify Formally."
+**OmniTrain Research Group**  
+*Fuse Everything. Trust Nothing. Verify Formally.*

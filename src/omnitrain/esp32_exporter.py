@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from pathlib import Path
 import yaml
+from typing import Dict
 
 class ESP32Exporter:
     """
@@ -13,83 +14,114 @@ class ESP32Exporter:
     def __init__(self, output_dir="exports"):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.magic = b'OMNI\x02' # Version 2: Structured Layout
+        self.magic = b'OMNI\x03' # Version 3: TOC Support
         
     def export(self, model: nn.Module, input_dim: int, d_model: int, output_dim: int, 
-               backbone_units: int = 128, config_path: str = None, filename: str = "bot_brain.omnibit"):
+               backbone_units: int = 128, heads: Dict[str, nn.Module] = None, config_path: str = None, filename: str = "model.omnibit"):
         out_path = self.output_dir / filename
-        weights = []
         
-        print("[ESP32Exporter] Extracting weights for Zero-Copy export (V2 Structured)...")
+        # Format: list of tuples (name, length, list_of_floats)
+        tensor_registry = []
         
-        def push_tensor(t):
-            weights.extend(t.detach().cpu().numpy().flatten().tolist())
+        print("[ESP32Exporter] Extracting weights for Zero-Copy export (V3 Structured + TOC)...")
+        
+        def push_tensor(name, t):
+            flat = t.detach().cpu().numpy().flatten().tolist()
+            tensor_registry.append((name, len(flat), flat))
 
         # 1. Input Projector
         if hasattr(model, 'input_projector'):
             proj = model.input_projector.default_proj
-            push_tensor(proj.weight)
-            push_tensor(proj.bias)
+            push_tensor('proj_w', proj.weight)
+            push_tensor('proj_b', proj.bias)
             
         # 2. Continuous Temporal Encoding (CTE)
         if hasattr(model, 'temporal_encoder'):
             cte = model.temporal_encoder
-            push_tensor(cte.inv_freq)
-            push_tensor(cte.amplitude)
-            push_tensor(cte.phase)
+            push_tensor('cte_inv_freq', cte.inv_freq)
+            push_tensor('cte_amp', cte.amplitude)
+            push_tensor('cte_phase', cte.phase)
             
-        # 3. BioLiquidCell (Explicit extraction for C++ engine mapping)
-        # Assuming mode="default" and backbone_layers=1
+        # 3. Brain (BioLiquidCell or NCPBackbone)
         if hasattr(model, 'brain'):
             brain = model.brain
-            if hasattr(brain, 'sensory_w'):
-                push_tensor(brain.sensory_w)
-                push_tensor(brain.sensory_b)
+            
+            # Helper to extract BioLiquidCell
+            def extract_cell(prefix, cell):
+                if hasattr(cell, 'sensory_w'):
+                    push_tensor(f'{prefix}sensory_w', cell.sensory_w)
+                    push_tensor(f'{prefix}sensory_b', cell.sensory_b)
+                    
+                # Backbone State (iterate all linears)
+                for i, layer in enumerate(cell.backbone_state):
+                    if isinstance(layer, nn.Linear):
+                        push_tensor(f'{prefix}state_w_{i}', layer.weight)
+                        push_tensor(f'{prefix}state_b_{i}', layer.bias)
                 
-                # Backbone State (Linear 0)
-                state_lin = brain.backbone_state[0]
-                push_tensor(state_lin.weight)
-                push_tensor(state_lin.bias)
-                
-                # Backbone Time (Linear 0)
-                time_lin = brain.backbone_time[0]
-                push_tensor(time_lin.weight)
-                push_tensor(time_lin.bias)
-                
-                # FF1 & FF2
-                push_tensor(brain.ff1.weight)
-                push_tensor(brain.ff1.bias)
-                push_tensor(brain.ff2.weight)
-                push_tensor(brain.ff2.bias)
-                
-                # Time Gates
-                push_tensor(brain.time_a.weight)
-                push_tensor(brain.time_a.bias)
-                push_tensor(brain.time_b.weight)
-                push_tensor(brain.time_b.bias)
-                
-                # Time Scale
-                push_tensor(brain.time_scale)
+                # Backbone Time (iterate all linears)
+                for i, layer in enumerate(cell.backbone_time):
+                    if isinstance(layer, nn.Linear):
+                        push_tensor(f'{prefix}time_w_{i}', layer.weight)
+                        push_tensor(f'{prefix}time_b_{i}', layer.bias)
+                        
+                push_tensor(f'{prefix}ff1_w', cell.ff1.weight)
+                push_tensor(f'{prefix}ff1_b', cell.ff1.bias)
+                push_tensor(f'{prefix}ff2_w', cell.ff2.weight)
+                push_tensor(f'{prefix}ff2_b', cell.ff2.bias)
+                push_tensor(f'{prefix}time_a_w', cell.time_a.weight)
+                push_tensor(f'{prefix}time_a_b', cell.time_a.bias)
+                push_tensor(f'{prefix}time_b_w', cell.time_b.weight)
+                push_tensor(f'{prefix}time_b_b', cell.time_b.bias)
+                push_tensor(f'{prefix}time_scale', cell.time_scale)
 
-        # 4. TODO: Add Regressor and OmniShield export
+            # Check if NCPBackbone
+            if type(brain).__name__ == 'NCPBackbone':
+                push_tensor('ncp_sensory_w', brain.sensory_layer.weight)
+                push_tensor('ncp_sensory_b', brain.sensory_layer.bias)
+                extract_cell('ncp_inter_', brain.inter_cell)
+                extract_cell('ncp_cmd_', brain.command_cell)
+                push_tensor('ncp_motor_w', brain.motor_layer.weight)
+                push_tensor('ncp_motor_b', brain.motor_layer.bias)
+            else:
+                # Legacy BioLiquidCell
+                extract_cell('legacy_', brain)
+
+        # 4. Heads
+        if heads:
+            for head_id, head_module in heads.items():
+                # Extract all linears dynamically
+                for name, module in head_module.named_modules():
+                    if isinstance(module, nn.Linear):
+                        push_tensor(f'head_{head_id}_{name}_w', module.weight)
+                        push_tensor(f'head_{head_id}_{name}_b', module.bias)
+
+        # Flatten weights and prepare TOC
+        toc_sizes = [size for name, size, flat in tensor_registry]
+        total_weights = sum(toc_sizes)
+        all_weights = []
+        for name, size, flat in tensor_registry:
+            all_weights.extend(flat)
 
         # Save to Binary Format (.omnibit)
         with open(out_path, "wb") as f:
-            # Magic + Padding (3 bytes) to ensure 4-byte float offset alignment
+            # Magic + Padding (3 bytes)
             f.write(self.magic + b'\x00\x00\x00') 
             
-            # Dimensions Header (20 bytes)
-            # Layout: input_dim, d_model, output_dim, backbone_units, len(weights)
-            # Current Offset: 8 bytes. After 20 bytes -> Float Offset: 28 bytes (multiple of 4)
-            f.write(struct.pack('<IIIII', input_dim, d_model, output_dim, backbone_units, len(weights)))
+            # Dimensions Header (24 bytes)
+            num_tensors = len(toc_sizes)
+            f.write(struct.pack('<IIIIII', input_dim, d_model, output_dim, backbone_units, total_weights, num_tensors))
+            
+            # TOC array (num_tensors * 4 bytes)
+            if num_tensors > 0:
+                f.write(struct.pack(f'<{num_tensors}I', *toc_sizes))
             
             # Weights array
-            if len(weights) > 0:
-                f.write(struct.pack(f'<{len(weights)}f', *weights))
+            if total_weights > 0:
+                f.write(struct.pack(f'<{total_weights}f', *all_weights))
             
         print(f"[ESP32Exporter] Successfully exported to {out_path}")
         size_kb = out_path.stat().st_size / 1024.0
-        print(f"[ESP32Exporter] Flash footprint: {size_kb:.2f} KB ({len(weights)} parameters)")
+        print(f"[ESP32Exporter] Flash footprint: {size_kb:.2f} KB ({total_weights} parameters, {num_tensors} tensors)")
         
         if config_path:
             self._export_hw_config(config_path, self.output_dir / "esp32_hw_config.h")

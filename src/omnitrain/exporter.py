@@ -6,6 +6,11 @@ import torch
 import torch.nn as nn
 import logging
 
+try:
+    from . import __version__ as PKG_VERSION
+except ImportError:
+    PKG_VERSION = '2.1.0'
+
 
 class OmniExporter:
     """
@@ -23,7 +28,7 @@ class OmniExporter:
             'd_model': model.d_model,
             'n_latents': model.n_latents,
             'input_dim': model.input_dim,
-            'version': '1.0.0',
+            'version': PKG_VERSION,
             'has_auto_modality': True,
             'has_stateful_memory': True,
             'heads': {}
@@ -35,17 +40,13 @@ class OmniExporter:
             # Store head architecture for deterministic reconstruction
             ha = getattr(head_module, 'metadata', {})
             if not ha:
-                # Deduce output_dim dynamically if missing
                 out_dim = getattr(head_module, 'output_dim', None)
-                if out_dim is None and hasattr(head_module, 'net'):
-                    try:
-                        out_dim = head_module.net[-1].out_features
-                    except AttributeError:
-                        out_dim = 1
+                if out_dim is None:
+                    raise ValueError(f"Head {head_id} ({type(head_module).__name__}) missing 'output_dim' attribute. Required for deterministic export.")
                         
                 ha = {
                     'd_model': architecture['d_model'],
-                    'output_dim': out_dim or 1,
+                    'output_dim': out_dim,
                     'type': type(head_module).__name__
                 }
             architecture['heads'][head_id] = ha
@@ -56,8 +57,9 @@ class OmniExporter:
             'metadata': config,
             'architecture': architecture,
             'timestamp': datetime.datetime.utcnow().isoformat(),
-            'version': '2.1.0'
+            'version': PKG_VERSION
         }
+        os.makedirs(os.path.dirname(os.path.abspath(export_path)), exist_ok=True)
         torch.save(bundle, export_path)
         logging.info(f"📦 Exported PyTorch bundle to {export_path}")
 
@@ -125,14 +127,15 @@ class OmniExporter:
         with torch.no_grad():
             dummy_tokens = torch.randn(static_batch, static_tokens, d_model)
             dummy_dt = torch.ones(static_batch, 1)
-            dummy_state = torch.zeros(static_batch, n_latents, d_model)
-            dummy_abs_time = torch.zeros(static_batch, 1)
+            dummy_state = torch.randn(static_batch, n_latents, d_model) * 0.1
+            dummy_abs_time = torch.rand(static_batch, 1) + 1.0
             # Warm up
             unified(dummy_tokens, dummy_dt, dummy_state, dummy_abs_time)
 
         input_names = ["sensor_tokens", "dt", "prev_state", "abs_time"]
         output_names = ["next_state"] + [f"head_{k}" for k in unified.ordered_head_keys]
 
+        os.makedirs(os.path.dirname(os.path.abspath(export_path)), exist_ok=True)
         torch.onnx.export(
             unified,
             (dummy_tokens, dummy_dt, dummy_state, dummy_abs_time),
@@ -178,7 +181,7 @@ class OmniExporter:
         
         logging.info(f"Running Qualcomm SDK Converter: {' '.join(cmd)}")
         try:
-            _ = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            _ = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=600)
             logging.info(f"✅ DLC successfully generated: {dlc_path}")
             return True
         except subprocess.CalledProcessError as e:
@@ -213,12 +216,10 @@ class OmniExporter:
             raise FileNotFoundError(f"Export bundle {omni_path} not found.")
 
         from .fusion_core import LiquidFusionCore
-        from .heads import ClassificationHead, RegressionHead
+        from . import heads as heads_module
 
-        # SECURITY NOTE: weights_only=False allows pickle deserialization.
-        # Only load .omni bundles from trusted sources.
-        # TODO: Migrate to safetensors for production deployment.
-        bundle = torch.load(omni_path, map_location='cpu', weights_only=False)
+        # Load weights securely
+        bundle = torch.load(omni_path, map_location='cpu', weights_only=True)
         meta = bundle.get('metadata', {})
         arch = bundle.get('architecture', {})
 
@@ -241,11 +242,16 @@ class OmniExporter:
                 d_model_head = ha['d_model']
                 output_dim = ha['output_dim']
 
-                if head_type == 'RegressionHead':
-                    h = RegressionHead(output_dim, d_model_head)
+                head_class = getattr(heads_module, head_type, None)
+                if not head_class:
+                    raise ValueError(f"Unknown head type in bundle: {head_type}")
+
+                if head_type == 'ClassificationHead':
+                    h = head_class(num_classes=output_dim, d_model=d_model_head)
+                elif head_type == 'RegressionHead':
+                    h = head_class(output_dim, d_model_head)
                 else:
-                    # For ClassificationHead, output_dim == num_classes
-                    h = ClassificationHead(num_classes=output_dim, d_model=d_model_head)
+                    h = head_class(output_dim=output_dim, d_model=d_model_head)
                 
                 h.load_state_dict(head_state)
                 h.eval()
