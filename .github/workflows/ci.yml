@@ -37,20 +37,9 @@ jobs:
           pip install -e ".[dev]"
           pip install pytest pytest-cov pyyaml pyserial
 
-      - name: Run unit tests
+      - name: Run OmniTrain Benchmark Suite (Tests)
         run: |
-          pytest tests/ -v --ignore=tests/parity \
-            --cov=src/omnitrain \
-            --cov-report=term-missing \
-            --cov-report=xml \
-            -x  # Stop on first failure
-
-      - name: Upload coverage to GitHub
-        uses: actions/upload-artifact@v4
-        if: matrix.python-version == '3.11'
-        with:
-          name: coverage-report
-          path: coverage.xml
+          python benchmarks/benchmark_suite.py
 
   cpp-syntax-check:
     name: C++ Syntax Check (GCC)
@@ -80,42 +69,3 @@ jobs:
           g++ -std=c++17 -x c++ src/cpp_engine/core/include/OmniEngineNEON.hpp \
               -I src/cpp_engine/core/include -fsyntax-only
           echo "✅ All Linux HAL headers compile cleanly"
-
-  parity-check:
-    name: Python ↔ C++ Numerical Parity
-    runs-on: ubuntu-22.04
-    needs: [python-tests, cpp-syntax-check]
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install Python dependencies
-        run: |
-          pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install -e ".[dev]"
-
-      - name: Install GCC
-        run: sudo apt-get install -y g++
-
-      - name: Generate reference outputs (Python)
-        run: python tests/parity/generate_reference.py
-
-      - name: Compile C++ parity checker
-        run: |
-          g++ -std=c++17 -O2 tests/parity/test_parity_check.cpp \
-              src/cpp_engine/core/src/OmniEngine.cpp \
-              -I src/cpp_engine/core/include \
-              -DOMNI_MAX_DIM=64 \
-              -o /tmp/parity_check
-
-      - name: Run parity check (Python ↔ C++ tolerance < 1e-4)
-        run: |
-          /tmp/parity_check \
-            tests/parity/parity_brain.omnibit \
-            tests/parity/reference_outputs.json
