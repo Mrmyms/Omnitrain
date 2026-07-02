@@ -41,11 +41,11 @@ class ProjectManager:
         config_path = os.path.join(project_dir, "config.yaml")
         if not os.path.exists(config_path):
             default_config = {
-                "project": "omnitrain_connectoma",
-                "logs": "robot_logs.csv",
+                "project": "OmniTrain_Project",
+                "logs": "training_data.csv",
                 "model": {
-                    "d_model": 512,
-                    "n_latents": 128,
+                    "d_model": 256,
+                    "n_latents": 32,
                     "conectoma": {
                         "enabled": True,
                         "sensory_n": 8,
@@ -94,7 +94,7 @@ class ProjectManager:
         os.makedirs(os.path.join(project_dir, "models"), exist_ok=True)
 
         # 3. Create dummy dataset
-        csv_path = os.path.join(project_dir, "robot_logs.csv")
+        csv_path = os.path.join(project_dir, "training_data.csv")
         if not os.path.exists(csv_path):
             ProjectManager.generate_mock_dataset(csv_path)
 
@@ -161,7 +161,7 @@ class LiquidTrainer:
         """
         Runs the stateful Lagrangian training process.
         """
-        csv_path = csv_path or self.config.get("logs", "robot_logs.csv")
+        csv_path = csv_path or self.config.get("logs", "training_data.csv")
         if not os.path.exists(csv_path):
             raise FileNotFoundError(f"Dataset CSV {csv_path} not found.")
 

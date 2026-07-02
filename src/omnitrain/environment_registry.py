@@ -15,13 +15,13 @@ class SensorSpec:
         if self.range is None:
             self.range = [0.0, 1.0]
 
-class OmniBaseRobot(abc.ABC):
+class OmniEnvironment(abc.ABC):
     """
-    Abstract Base Class for all OmniTrain registered robots.
+    Abstract Base Class for all OmniTrain registered environments.
     """
     @abc.abstractmethod
     def reset(self) -> Dict[str, Any]:
-        """Reset the robot to an initial state and return initial sensor readings."""
+        """Reset the environment to an initial state and return initial sensor readings."""
         pass
 
     @abc.abstractmethod
@@ -31,46 +31,46 @@ class OmniBaseRobot(abc.ABC):
 
     @abc.abstractmethod
     def get_sensor_specs(self) -> List[SensorSpec]:
-        """Return the specifications of the robot's sensors."""
+        """Return the specifications of the environment's sensors."""
         pass
 
     def close(self):
         """Cleanup resources."""
         pass
 
-class RobotRegistry:
+class EnvironmentRegistry:
     """
-    Singleton registry for dynamically discovering and instantiating robots.
+    Singleton registry for dynamically discovering and instantiating environments.
     """
-    _registry: Dict[str, Type[OmniBaseRobot]] = {}
+    _registry: Dict[str, Type[OmniEnvironment]] = {}
 
     @classmethod
     def register(cls, name: str):
-        def decorator(robot_cls: Type[OmniBaseRobot]):
-            cls._registry[name] = robot_cls
-            return robot_cls
+        def decorator(env_cls: Type[OmniEnvironment]):
+            cls._registry[name] = env_cls
+            return env_cls
         return decorator
 
     @classmethod
-    def make(cls, name: str, **kwargs) -> OmniBaseRobot:
+    def make(cls, name: str, **kwargs) -> OmniEnvironment:
         if name not in cls._registry:
-            raise ValueError(f"Robot '{name}' not found in registry. Available: {list(cls._registry.keys())}")
+            raise ValueError(f"Environment '{name}' not found in registry. Available: {list(cls._registry.keys())}")
         return cls._registry[name](**kwargs)
 
     @classmethod
     def list(cls) -> List[str]:
         return list(cls._registry.keys())
 
-def register_robot(name: str):
-    """Decorator to register a robot class."""
-    return RobotRegistry.register(name)
+def register_environment(name: str):
+    """Decorator to register an environment class."""
+    return EnvironmentRegistry.register(name)
 
-def auto_config(robot: OmniBaseRobot) -> Dict[str, Any]:
+def auto_config(environment: OmniEnvironment) -> Dict[str, Any]:
     """
-    Generate an OmniTrain 'inputs' config block automatically from a robot's SensorSpecs.
+    Generate an OmniTrain 'inputs' config block automatically from an environment's SensorSpecs.
     """
     inputs_cfg = []
-    for spec in robot.get_sensor_specs():
+    for spec in environment.get_sensor_specs():
         inputs_cfg.append({
             'id': spec.id,
             'type': spec.type,

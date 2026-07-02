@@ -1,6 +1,6 @@
 __version__ = '2.1.0'
 
-from .robot_registry import RobotRegistry, OmniBaseRobot, SensorSpec, register_robot
+from .environment_registry import EnvironmentRegistry, OmniEnvironment, SensorSpec, register_environment
 
 from .sdk import ProjectManager, LiquidTrainer, EdgeDeployer, AgentRunner
 from .fusion_core import LiquidFusionCore
@@ -10,10 +10,10 @@ from .serial_logger import ESP32SerialLogger
 
 __all__ = [
     '__version__',
-    'RobotRegistry',
-    'OmniBaseRobot',
+    'EnvironmentRegistry',
+    'OmniEnvironment',
     'SensorSpec',
-    'register_robot',
+    'register_environment',
     'ProjectManager',
     'LiquidTrainer',
     'EdgeDeployer',
@@ -23,4 +23,3 @@ __all__ = [
     'JetsonExporter',
     'ESP32SerialLogger',
 ]
-
