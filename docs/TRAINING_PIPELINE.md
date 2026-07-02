@@ -1,43 +1,43 @@
-# Pipeline de Entrenamiento: Conectoma v2.1
+# Training Pipeline: Conectoma v2.1
 
-Este documento define la metodología oficial recomendada para entrenar sistemas robóticos autónomos impulsados por **Liquid Neural Networks (LNN)** y arquitecturas **Closed-form Continuous-time (CfC)**. La metodología v2.1 introduce estabilidad de grado para despliegues críticos.
-
----
-
-## Metodología de Entrenamiento (Curriculum)
-
-Entrenar una LNN requiere un enfoque radicalmente distinto al de un Transformer estático, ya que las derivadas fluyen a través del tiempo continuo ($\Delta t$). Este pipeline integra estabilidad formal y paridad de datos.
-
-### Fase 1: Pre-entrenamiento Sensorial y Paridad de Datos
-Antes de procesar dinámicas temporales, el sistema debe aprender a normalizar la realidad.
-*   **Captura de Estadísticas (v2.1):** Durante la carga del dataset (`OmniLogDataset`), el sistema captura automáticamente la media y desviación estándar de cada sensor.
-*   **Importancia:** Estas estadísticas se guardan en el bundle `.omni`. Sin ellas, el robot sufriría de "degradación de datos" al recibir valores crudos en tiempo real que no coinciden con la distribución de entrenamiento.
-
-### Fase 2: Clonación de Comportamiento (Stateful BPTT)
-Enseñanza de los reflejos motores base mediante demostraciones humanas.
-*   **Mecánica:** El entrenamiento es **Stateful**. El estado latente del cerebro se propaga entre secuencias contiguas de una trayectoria, permitiendo que el robot aprenda dependencias temporales de largo alcance (ej. recordar que pasó por una puerta hace 10 segundos).
-
-### Fase 3: Inyección de Caos (Domain Randomization)
-La ventaja principal de las LNN es su resiliencia natural a condiciones fuera de distribución (OOD).
-*   **Mecánica:** Se inyecta ruido gaussiano y fallos de sensores (dropout). 
-*   **Nota Técnica:** El ruido se aplica **después** de la normalización Z-Score pero **antes** del clamping de activación, permitiendo que la red aprenda a ignorar señales ruidosas sin saturarse.
-
-### Fase 4: Estabilidad Lagrangiana (Formal Safety)
-Pulido final del modelo con garantías de seguridad matemática.
-*   **Lagrangian Dual Update (v2.1):** Se utiliza un optimizador primal-dual para ajustar el peso de la seguridad. Las actualizaciones del multiplicador de Lagrange ($\lambda$) se realizan **por secuencia**, eliminando las oscilaciones violentas de versiones anteriores y logrando una política de seguridad mucho más estable.
-*   **OmniShield (RK4 Consistency):** Garantía de paridad matemática entre entrenamiento e inferencia mediante el uso de integración Runge-Kutta 4 en todos los niveles del escudo.
-
-### Fase 5: Consolidación Sináptica (Structured Pruning)
-Optimización post-entrenamiento para hardware de bajo consumo (Edge Computing).
-*   **Mecánica:** Se eliminan las neuronas y conexiones más débiles de forma estructural. Esto reduce el tamaño del modelo hasta en un 60% y disminuye la latencia en dispositivos NVIDIA Jetson o Qualcomm.
+This document defines the official recommended methodology for training autonomous robotic systems powered by **Liquid Neural Networks (LNN)** and **Closed-form Continuous-time (CfC)** architectures. The v2.1 methodology introduces enterprise-grade stability for critical deployments.
 
 ---
 
-## Referencias y Fuentes Oficiales (MIT)
+## Training Methodology (Curriculum)
 
-1.  **Arquitectura CfC:** Nature Machine Intelligence (2022). Ramin Hasani, et al.
-2.  **Robustez OOD:** Science Robotics (2023). Makram Chahine, Ramin Hasani, et al.
-3.  **Seguridad Formal:** ICNN-based Control Barrier Functions (2021).
+Training an LNN requires a radically different approach than a static Transformer, as derivatives flow across continuous time ($\Delta t$). This pipeline integrates formal stability and data parity.
+
+### Phase 1: Sensory Pre-training and Data Parity
+Before processing temporal dynamics, the system must learn to normalize reality.
+*   **Statistics Capture (v2.1):** During dataset loading (`OmniLogDataset`), the system automatically captures the mean and standard deviation of each sensor.
+*   **Importance:** These statistics are saved in the `.omni` bundle. Without them, the robot would suffer from "data degradation" upon receiving raw values in real-time that do not match the training distribution.
+
+### Phase 2: Behavior Cloning (Stateful BPTT)
+Teaching base motor reflexes through human demonstrations.
+*   **Mechanics:** Training is **Stateful**. The latent state of the brain is propagated between contiguous sequences of a trajectory, allowing the robot to learn long-range temporal dependencies (e.g., remembering it passed through a door 10 seconds ago).
+
+### Phase 3: Chaos Injection (Domain Randomization)
+The main advantage of LNNs is their natural resilience to Out-Of-Distribution (OOD) conditions.
+*   **Mechanics:** Gaussian noise and sensor failures (dropout) are injected. 
+*   **Technical Note:** Noise is applied **after** Z-Score normalization but **before** activation clamping, allowing the network to learn to ignore noisy signals without saturating.
+
+### Phase 4: Lagrangian Stability (Formal Safety)
+Final polishing of the model with mathematical safety guarantees.
+*   **Lagrangian Dual Update (v2.1):** A primal-dual optimizer is used to adjust the weight of safety. Updates to the Lagrange multiplier ($\lambda$) are performed **per sequence**, eliminating the violent oscillations of previous versions and achieving a much more stable safety policy.
+*   **OmniShield (RK4 Consistency):** Guarantee of mathematical parity between training and inference by using Runge-Kutta 4 integration at all levels of the shield.
+
+### Phase 5: Synaptic Consolidation (Structured Pruning)
+Post-training optimization for low-power hardware (Edge Computing).
+*   **Mechanics:** The weakest neurons and connections are structurally removed. This reduces the model size by up to 60% and decreases latency on NVIDIA Jetson or Qualcomm devices.
+
+---
+
+## References and Official Sources (MIT)
+
+1.  **CfC Architecture:** Nature Machine Intelligence (2022). Ramin Hasani, et al.
+2.  **OOD Robustness:** Science Robotics (2023). Makram Chahine, Ramin Hasani, et al.
+3.  **Formal Safety:** ICNN-based Control Barrier Functions (2021).
 
 ---
 *OmniTrain Project Documentation - 2026 (v2.1)*
