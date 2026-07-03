@@ -119,20 +119,5 @@ graph TD
 
 ---
 
-## Citation
-
-If you use OmniTrain or the `.omnibit` Zero-Copy architecture in your research, please cite our paper:
-
-```bibtex
-@article{martinez2026efficient,
-  title={Efficient Closed-Form Continuous-Time Neural Networks on Commodity Microcontrollers},
-  author={Martinez Sanchez, Manuel Yobani},
-  journal={OmniTrain Research Group},
-  year={2026}
-}
-```
-
----
-
 **OmniTrain Research Group**  
 *Fuse Everything. Trust Nothing. Verify Formally.*
