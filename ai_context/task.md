@@ -1,0 +1,9 @@
+- `[x]` Initialize Task List for HIL Testing
+- `[x]` Install PlatformIO CLI and PySerial
+- `[x]` Identify ESP32 Serial Port
+- `[x]` Initialize PlatformIO Project for esp32dev
+- `[x]` Implement `main.cpp` using OmniEngine
+- `[/]` Flash firmware to ESP32 (Blocked by macOS Sandbox)
+- `[x]` Create and run `run_hil_test.py`
+- `[ ]` Update LaTeX Paper with real HIL results
+- `[ ]` Finalize walkthrough

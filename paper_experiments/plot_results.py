@@ -17,8 +17,11 @@ if __name__ == "__main__":
     markers = {"LSTM": "x", "GRU": "^", "CfC": "o"}
     linestyles = {"LSTM": "--", "GRU": "-.", "CfC": "-"}
     
-    for name, mses in results.items():
-        plt.plot(packet_loss_levels, mses, 
+    for name, stats in results.items():
+        means = np.array(stats["mean"])
+        stds = np.array(stats["std"])
+        
+        plt.plot(packet_loss_levels, means, 
                  label=f"{name} (TFLite vs Zero-Copy)" if name=="CfC" else name,
                  color=colors[name],
                  marker=markers[name],
@@ -26,7 +29,9 @@ if __name__ == "__main__":
                  linewidth=2.5,
                  markersize=8)
                  
-    plt.title("Temporal Resilience: MSE vs Packet Loss (Inverted Pendulum PiL)", fontsize=14, pad=15)
+        plt.fill_between(packet_loss_levels, means - stds, means + stds, color=colors[name], alpha=0.2)
+                 
+    plt.title("Temporal Resilience: MSE vs Packet Loss (5 Random Seeds)", fontsize=14, pad=15)
     plt.xlabel("Packet Loss / Temporal Jitter (%)", fontsize=12)
     plt.ylabel("Mean Squared Error (MSE)", fontsize=12)
     plt.xticks(packet_loss_levels)

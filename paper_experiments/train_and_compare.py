@@ -93,6 +93,8 @@ def evaluate_model(model, X, Y, T=None):
     return mse
 
 if __name__ == "__main__":
+    import random
+    
     print("Loading CartPole data...")
     X_0 = np.load("data/pendulum_X_0loss.npy")
     X_20 = np.load("data/pendulum_X_20loss.npy")
@@ -101,34 +103,52 @@ if __name__ == "__main__":
     T = np.load("data/pendulum_T.npy")
     
     hidden_dim = 16 # roughly 4000 params for LSTM/GRU/CfC
+    seeds = [42, 100, 2026, 777, 999]
     
-    models = {
-        "LSTM": DiscreteRNN(4, hidden_dim, 1, 'lstm'),
-        "GRU": DiscreteRNN(4, hidden_dim, 1, 'gru'),
-        "CfC": ContinuousCfC(4, hidden_dim, 1)
-    }
+    raw_results = {"LSTM": {0: [], 20: [], 60: []}, 
+                   "GRU": {0: [], 20: [], 60: []}, 
+                   "CfC": {0: [], 20: [], 60: []}}
     
-    results = {}
-    
-    for name, model in models.items():
-        print(f"\n--- Training {name} ---")
-        # Train on 0% loss (ideal conditions)
-        if name == "CfC":
-            model = train_model(model, X_0, Y, T)
-        else:
-            model = train_model(model, X_0, Y)
+    for seed in seeds:
+        print(f"\n=====================")
+        print(f"Running Seed: {seed}")
+        print(f"=====================")
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+        random.seed(seed)
+        
+        models = {
+            "LSTM": DiscreteRNN(4, hidden_dim, 1, 'lstm'),
+            "GRU": DiscreteRNN(4, hidden_dim, 1, 'gru'),
+            "CfC": ContinuousCfC(4, hidden_dim, 1)
+        }
+        
+        for name, model in models.items():
+            print(f"--- Training {name} ---")
+            if name == "CfC":
+                model = train_model(model, X_0, Y, T, epochs=50)
+            else:
+                model = train_model(model, X_0, Y, epochs=50)
+                
+            mse_0 = evaluate_model(model, X_0, Y, T if name == "CfC" else None)
+            mse_20 = evaluate_model(model, X_20, Y, T if name == "CfC" else None)
+            mse_60 = evaluate_model(model, X_60, Y, T if name == "CfC" else None)
             
-        print(f"--- Evaluating {name} ---")
-        # Evaluate on all loss regimes
-        mse_0 = evaluate_model(model, X_0, Y, T if name == "CfC" else None)
-        mse_20 = evaluate_model(model, X_20, Y, T if name == "CfC" else None)
-        mse_60 = evaluate_model(model, X_60, Y, T if name == "CfC" else None)
+            raw_results[name][0].append(mse_0)
+            raw_results[name][20].append(mse_20)
+            raw_results[name][60].append(mse_60)
+            
+    # Calculate Mean and Std
+    final_results = {}
+    for name in raw_results:
+        final_results[name] = {
+            "mean": [np.mean(raw_results[name][0]), np.mean(raw_results[name][20]), np.mean(raw_results[name][60])],
+            "std": [np.std(raw_results[name][0]), np.std(raw_results[name][20]), np.std(raw_results[name][60])]
+        }
+        print(f"\n{name} Final Results:")
+        print(f"MSE (0% loss): {final_results[name]['mean'][0]:.4f} ± {final_results[name]['std'][0]:.4f}")
+        print(f"MSE (20% loss): {final_results[name]['mean'][1]:.4f} ± {final_results[name]['std'][1]:.4f}")
+        print(f"MSE (60% loss): {final_results[name]['mean'][2]:.4f} ± {final_results[name]['std'][2]:.4f}")
         
-        results[name] = [mse_0, mse_20, mse_60]
-        print(f"MSE (0% loss): {mse_0:.4f}")
-        print(f"MSE (20% loss): {mse_20:.4f}")
-        print(f"MSE (60% loss): {mse_60:.4f}")
-        
-    # Save results for plotting
-    np.save("data/results_mse.npy", results)
+    np.save("data/results_mse.npy", final_results)
     print("\nExperiment complete. Results saved for plotting.")
