@@ -327,17 +327,20 @@ class BioLiquidCell(nn.Module):
             t_interp = self.sigmoid(self.time_a(b_time) * ts + self.time_b(b_time))
             new_hidden = ff1 * (1.0 - t_interp) + t_interp * ff2
         else:
-            # Full CfC
-            ff1 = self.tanh(self.ff1(b_state))
-            ff2 = self.tanh(self.ff2(b_state))
+            # Full CfC (Hasani 2022)
+            # h_tilde: Candidate state
+            h_tilde = self.tanh(self.ff1(b_state))
+            
+            # g: Interaction gate
+            g = self.sigmoid(self.ff2(b_state))
             
             # Sigmoid time-gate
             t_interp = self.sigmoid(self.time_a(b_time) * ts + self.time_b(b_time))
             
             if self.mode == "no_gate":
-                new_hidden = ff1 + t_interp * ff2
+                new_hidden = h_tilde + t_interp * h_in
             else:  # "default" — canonical CfC
-                new_hidden = ff1 * (1.0 - t_interp) + t_interp * ff2
+                new_hidden = (1.0 - t_interp) * (g * h_tilde + (1.0 - g) * h_in) + t_interp * h_in
 
         
         return new_hidden

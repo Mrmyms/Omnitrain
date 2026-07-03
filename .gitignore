@@ -36,3 +36,4 @@ dla_cache/
 
 # Jupyter
 .ipynb_checkpoints/
+data/

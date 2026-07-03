@@ -155,14 +155,11 @@ void OmniEngine::apply_bio_liquid_cell(float dt) {
     matmul(time_w_, time_b_, x_in_, b_time_, half_units, in_size);
     for (uint32_t i = 0; i < half_units; ++i) b_time_[i] = lecun_activation(b_time_[i]);
 
-    // Feed-Forward Targets (ff1 and ff2)
+    // Feed-Forward Targets
     float ff1[OMNI_MAX_DIM], ff2[OMNI_MAX_DIM];
     matmul(ff1_w_, ff1_b_, b_state_, ff1, d_model_, backbone_units_);
     matmul(ff2_w_, ff2_b_, b_state_, ff2, d_model_, backbone_units_);
-    for (uint32_t i = 0; i < d_model_; ++i) {
-        ff1[i] = std::tanh(ff1[i]);
-        ff2[i] = std::tanh(ff2[i]);
-    }
+    // Note: tanh for ff1 (h_tilde) and sigmoid for ff2 (g) are applied in the loop
 
     // Time Interpolation Gate
     float time_a_out[OMNI_MAX_DIM], time_b_out[OMNI_MAX_DIM];
@@ -171,10 +168,14 @@ void OmniEngine::apply_bio_liquid_cell(float dt) {
 
     float ts = std::max(dt, 0.0f);
 
-    // CfC Default Mode state update
+    // CfC Default Mode state update (Hasani 2022)
     for (uint32_t i = 0; i < d_model_; ++i) {
+        float h_tilde = std::tanh(ff1[i]);
+        float g = sigmoid(ff2[i]);
         float t_scaled  = ts * std::abs(time_scale_[i]);
         float t_interp  = sigmoid(time_a_out[i] * t_scaled + time_b_out[i]);
-        state_buffer_[i] = ff1[i] * (1.0f - t_interp) + t_interp * ff2[i];
+        float h_prev = state_buffer_[i];
+        
+        state_buffer_[i] = (1.0f - t_interp) * (g * h_tilde + (1.0f - g) * h_prev) + t_interp * h_prev;
     }
 }
