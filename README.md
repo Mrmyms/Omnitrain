@@ -5,7 +5,10 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![C++17](https://img.shields.io/badge/C++-17-blue.svg?logo=c%2B%2B)](https://isocpp.org/)
 [![Paper](https://img.shields.io/badge/Paper-Peer%20Review-brightgreen.svg)]()
-[![Hardware](https://img.shields.io/badge/Hardware-ESP32--S3%20%7C%20Jetson-orange.svg)]()
+[![Hardware](https://img.shields.io/badge/Hardware-All-orange.svg)]()
+
+> [!IMPORTANT]
+> **Peer Review Reproducibility:** If you are reviewing the paper *"Efficient Closed-Form Continuous-Time Neural Networks on Commodity Microcontrollers"*, the exact code, datasets, and scripts to reproduce the Inverted Pendulum (CartPole) experiments and visualizations are located in the **[`paper_experiments/`](./paper_experiments/)** directory.
 
 > [!NOTE]
 > **Research Status:** OmniTrain is an active research framework designed for high-frequency, safety-critical robotics. It bridges the gap between biological neural efficiency and formal mathematical safety constraints.
