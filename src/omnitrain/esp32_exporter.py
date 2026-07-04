@@ -14,7 +14,7 @@ class ESP32Exporter:
     def __init__(self, output_dir="exports"):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.magic = b'OMNI\x03' # Version 3: TOC Support
+        self.magic = b'OMNI\x04' # Version 4: Ablation Study Support (Arch Flag)
         
     def export(self, model: nn.Module, input_dim: int, d_model: int, output_dim: int, 
                backbone_units: int = 128, heads: Dict[str, nn.Module] = None, config_path: str = None, filename: str = "model.omnibit"):
@@ -42,7 +42,7 @@ class ESP32Exporter:
             push_tensor('cte_amp', cte.amplitude)
             push_tensor('cte_phase', cte.phase)
             
-        # 3. Brain (BioLiquidCell or NCPBackbone)
+        arch_flag = 0 # 0=CfC, 1=GRU, 2=Transformer
         if hasattr(model, 'brain'):
             brain = model.brain
             
@@ -82,6 +82,32 @@ class ESP32Exporter:
                 extract_cell('ncp_cmd_', brain.command_cell)
                 push_tensor('ncp_motor_w', brain.motor_layer.weight)
                 push_tensor('ncp_motor_b', brain.motor_layer.bias)
+            elif type(brain).__name__ == 'GRUBackbone':
+                arch_flag = 1
+                push_tensor('gru_w_ih', brain.gru.weight_ih)
+                push_tensor('gru_w_hh', brain.gru.weight_hh)
+                push_tensor('gru_b_ih', brain.gru.bias_ih)
+                push_tensor('gru_b_hh', brain.gru.bias_hh)
+            elif type(brain).__name__ == 'TransformerBackbone':
+                arch_flag = 2
+                push_tensor('trf_input_proj_w', brain.input_proj.weight)
+                push_tensor('trf_input_proj_b', brain.input_proj.bias)
+                push_tensor('trf_wq_w', brain.wq.weight)
+                push_tensor('trf_wq_b', brain.wq.bias)
+                push_tensor('trf_wk_w', brain.wk.weight)
+                push_tensor('trf_wk_b', brain.wk.bias)
+                push_tensor('trf_wv_w', brain.wv.weight)
+                push_tensor('trf_wv_b', brain.wv.bias)
+                push_tensor('trf_wo_w', brain.wo.weight)
+                push_tensor('trf_wo_b', brain.wo.bias)
+                push_tensor('trf_ffn1_w', brain.ffn1.weight)
+                push_tensor('trf_ffn1_b', brain.ffn1.bias)
+                push_tensor('trf_ffn2_w', brain.ffn2.weight)
+                push_tensor('trf_ffn2_b', brain.ffn2.bias)
+                push_tensor('trf_norm1_w', brain.norm1.weight)
+                push_tensor('trf_norm1_b', brain.norm1.bias)
+                push_tensor('trf_norm2_w', brain.norm2.weight)
+                push_tensor('trf_norm2_b', brain.norm2.bias)
             else:
                 # Legacy BioLiquidCell
                 extract_cell('legacy_', brain)
@@ -104,8 +130,8 @@ class ESP32Exporter:
 
         # Save to Binary Format (.omnibit)
         with open(out_path, "wb") as f:
-            # Magic + Padding (3 bytes)
-            f.write(self.magic + b'\x00\x00\x00') 
+            # Magic (5) + ArchFlag (1) + Padding (2) = 8 bytes total
+            f.write(self.magic + struct.pack('<B', arch_flag) + b'\x00\x00') 
             
             # Dimensions Header (24 bytes)
             num_tensors = len(toc_sizes)

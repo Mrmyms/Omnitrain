@@ -37,3 +37,8 @@ dla_cache/
 # Jupyter
 .ipynb_checkpoints/
 data/
+
+*.o
+*.zip
+ablation_exports/
+

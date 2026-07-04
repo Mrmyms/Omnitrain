@@ -346,6 +346,77 @@ class BioLiquidCell(nn.Module):
         return new_hidden
 
 
+class GRUBackbone(nn.Module):
+    """
+    Standard GRU implementation mimicking the signature of BioLiquidCell
+    for ablation studies. Zero-Copy compatible.
+    """
+    def __init__(self, input_size: int, hidden_size: int, backbone_units: int = 128):
+        super().__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        
+        # PyTorch GRUCell
+        # Weights will be extracted for C++ Engine
+        self.gru = nn.GRUCell(input_size, hidden_size)
+
+    def forward(self, x: torch.Tensor, h_prev: torch.Tensor, dt: torch.Tensor) -> torch.Tensor:
+        # GRU ignores the continuous time delta (dt), exposing its weakness 
+        # to irregular sampling compared to CfC.
+        return self.gru(x, h_prev)
+
+
+class TransformerBackbone(nn.Module):
+    """
+    Minimal Transformer Encoder Layer mimicking the signature of BioLiquidCell
+    for ablation studies. Zero-Copy compatible.
+    """
+    def __init__(self, input_size: int, hidden_size: int, backbone_units: int = 128):
+        super().__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        
+        # In this ablation, x and h_prev are both size hidden_size (D).
+        # We concatenate them for the transformer projection.
+        in_dim = input_size + hidden_size
+        self.input_proj = nn.Linear(in_dim, hidden_size)
+        
+        # Q, K, V projections
+        self.wq = nn.Linear(hidden_size, hidden_size)
+        self.wk = nn.Linear(hidden_size, hidden_size)
+        self.wv = nn.Linear(hidden_size, hidden_size)
+        self.wo = nn.Linear(hidden_size, hidden_size)
+        
+        # FFN
+        self.ffn1 = nn.Linear(hidden_size, backbone_units)
+        self.ffn2 = nn.Linear(backbone_units, hidden_size)
+        
+        # LayerNorms
+        self.norm1 = nn.LayerNorm(hidden_size)
+        self.norm2 = nn.LayerNorm(hidden_size)
+
+    def forward(self, x: torch.Tensor, h_prev: torch.Tensor, dt: torch.Tensor) -> torch.Tensor:
+        # Transformer ignores dt
+        x_in = torch.cat([x, h_prev], dim=-1)
+        x_proj = self.input_proj(x_in)
+        
+        q = self.wq(x_proj)
+        k = self.wk(x_proj)
+        v = self.wv(x_proj)
+        
+        # Point-wise self-attention (sequence length 1 per token in this ablation setup)
+        d_k = self.hidden_size ** 0.5
+        scores = torch.matmul(q.unsqueeze(1), k.unsqueeze(1).transpose(-2, -1)) / d_k
+        attn = torch.softmax(scores, dim=-1)
+        context = torch.matmul(attn, v.unsqueeze(1)).squeeze(1)
+        
+        out1 = self.norm1(x_proj + self.wo(context))
+        ffn_out = self.ffn2(torch.relu(self.ffn1(out1)))
+        out2 = self.norm2(out1 + ffn_out)
+        
+        return out2
+
+
 class NCPBackbone(nn.Module):
     def __init__(self, input_dim: int, sensory: int = 12, inter: int = 20, command: int = 8, motor: int = 4, continual_learning: bool = False, eta: float = 0.001):
         super().__init__()
@@ -498,6 +569,20 @@ class LiquidFusionCore(nn.Module):
                 hidden_size=d_model,
                 lstm_ratio=model_cfg.get('lstm_ratio', 0.25),
                 mode="default"
+            )
+        elif model_cfg.get('ablation', None) == 'gru':
+            self.brain_mode = "gru"
+            self.brain = GRUBackbone(
+                input_size=d_model,
+                hidden_size=d_model,
+                backbone_units=model_cfg.get('backbone_units', 128)
+            )
+        elif model_cfg.get('ablation', None) == 'transformer':
+            self.brain_mode = "transformer"
+            self.brain = TransformerBackbone(
+                input_size=d_model,
+                hidden_size=d_model,
+                backbone_units=model_cfg.get('backbone_units', 128)
             )
         else:
             self.brain_mode = "legacy"

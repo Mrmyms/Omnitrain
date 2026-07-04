@@ -4,18 +4,20 @@
 #include <algorithm>
 
 bool ESPOmniEngine::Load(const unsigned char* omnibit_data, size_t length) {
-    if (length < 28) {
+    if (length < 32) {
         return false; 
     }
 
-    // 1. Verify Magic Bytes 'OMNI\x03' (V3)
+    // 1. Verify Magic Bytes 'OMNI\x04' (V4)
     if (omnibit_data[0] != 'O' || omnibit_data[1] != 'M' || 
         omnibit_data[2] != 'N' || omnibit_data[3] != 'I' || 
-        omnibit_data[4] != 0x03) {
+        omnibit_data[4] != 0x04) {
         return false;
     }
 
-    // 2. Read metadata (24 bytes for V3)
+    architecture_type_ = omnibit_data[5];
+
+    // 2. Read metadata (24 bytes total: dims[5] + num_tensors)
     uint32_t dims[6];
     std::memcpy(dims, omnibit_data + 8, sizeof(dims));
     
@@ -34,8 +36,9 @@ bool ESPOmniEngine::Load(const unsigned char* omnibit_data, size_t length) {
     std::memset(state_buffer_, 0, sizeof(state_buffer_));
     std::memset(latents_, 0, sizeof(latents_));
 
-    // 3. Point to the weights array in Flash (Offset = 8 + 24 + num_tensors * 4)
-    weights_ptr_ = reinterpret_cast<const float*>(omnibit_data + 32 + num_tensors * 4);
+    // 3. Point to the weights array in Flash (Offset = 32 + TOC size)
+    uint32_t weights_offset = 32 + (num_tensors * 4);
+    weights_ptr_ = reinterpret_cast<const float*>(omnibit_data + weights_offset);
     
     // 4. Strict offset mapping for sequential matrix access
     uint32_t offset = 0;
@@ -46,31 +49,57 @@ bool ESPOmniEngine::Load(const unsigned char* omnibit_data, size_t length) {
     // CTE
     offset += (d_model_ / 2) * 2 + d_model_; 
     
-    // BioLiquidCell
-    sensory_w_ = weights_ptr_ + offset; offset += input_dim_;
-    sensory_b_ = weights_ptr_ + offset; offset += input_dim_;
-    
-    uint32_t in_size = input_dim_ + d_model_;
-    state_w_ = weights_ptr_ + offset; offset += backbone_units_ * in_size;
-    state_b_ = weights_ptr_ + offset; offset += backbone_units_;
-    
-    uint32_t half_units = backbone_units_ / 2;
-    time_w_ = weights_ptr_ + offset; offset += half_units * in_size;
-    time_b_ = weights_ptr_ + offset; offset += half_units;
-    
-    ff1_w_ = weights_ptr_ + offset; offset += d_model_ * backbone_units_;
-    ff1_b_ = weights_ptr_ + offset; offset += d_model_;
-    
-    ff2_w_ = weights_ptr_ + offset; offset += d_model_ * backbone_units_;
-    ff2_b_ = weights_ptr_ + offset; offset += d_model_;
-    
-    time_a_w_ = weights_ptr_ + offset; offset += d_model_ * half_units;
-    time_a_b_ = weights_ptr_ + offset; offset += d_model_;
-    
-    time_b_w_ = weights_ptr_ + offset; offset += d_model_ * half_units;
-    time_b_b_ = weights_ptr_ + offset; offset += d_model_;
-    
-    time_scale_ = weights_ptr_ + offset;
+    if (architecture_type_ == 0) { // CfC
+        // BioLiquidCell
+        sensory_w_ = weights_ptr_ + offset; offset += input_dim_;
+        sensory_b_ = weights_ptr_ + offset; offset += input_dim_;
+        
+        uint32_t in_size = input_dim_ + d_model_;
+        state_w_ = weights_ptr_ + offset; offset += backbone_units_ * in_size;
+        state_b_ = weights_ptr_ + offset; offset += backbone_units_;
+        
+        uint32_t half_units = backbone_units_ / 2;
+        time_w_ = weights_ptr_ + offset; offset += half_units * in_size;
+        time_b_ = weights_ptr_ + offset; offset += half_units;
+        
+        ff1_w_ = weights_ptr_ + offset; offset += d_model_ * backbone_units_;
+        ff1_b_ = weights_ptr_ + offset; offset += d_model_;
+        
+        ff2_w_ = weights_ptr_ + offset; offset += d_model_ * backbone_units_;
+        ff2_b_ = weights_ptr_ + offset; offset += d_model_;
+        
+        time_a_w_ = weights_ptr_ + offset; offset += d_model_ * half_units;
+        time_a_b_ = weights_ptr_ + offset; offset += d_model_;
+        
+        time_b_w_ = weights_ptr_ + offset; offset += d_model_ * half_units;
+        time_b_b_ = weights_ptr_ + offset; offset += d_model_;
+        
+        time_scale_ = weights_ptr_ + offset;
+    } else if (architecture_type_ == 1) { // GRU
+        gru_w_ih_ = weights_ptr_ + offset; offset += 3 * d_model_ * d_model_;
+        gru_w_hh_ = weights_ptr_ + offset; offset += 3 * d_model_ * d_model_;
+        gru_b_ih_ = weights_ptr_ + offset; offset += 3 * d_model_;
+        gru_b_hh_ = weights_ptr_ + offset; offset += 3 * d_model_;
+    } else if (architecture_type_ == 2) { // Transformer
+        trf_input_proj_w_ = weights_ptr_ + offset; offset += d_model_ * (2 * d_model_);
+        trf_input_proj_b_ = weights_ptr_ + offset; offset += d_model_;
+        trf_wq_w_ = weights_ptr_ + offset; offset += d_model_ * d_model_;
+        trf_wq_b_ = weights_ptr_ + offset; offset += d_model_;
+        trf_wk_w_ = weights_ptr_ + offset; offset += d_model_ * d_model_;
+        trf_wk_b_ = weights_ptr_ + offset; offset += d_model_;
+        trf_wv_w_ = weights_ptr_ + offset; offset += d_model_ * d_model_;
+        trf_wv_b_ = weights_ptr_ + offset; offset += d_model_;
+        trf_wo_w_ = weights_ptr_ + offset; offset += d_model_ * d_model_;
+        trf_wo_b_ = weights_ptr_ + offset; offset += d_model_;
+        trf_ffn1_w_ = weights_ptr_ + offset; offset += backbone_units_ * d_model_;
+        trf_ffn1_b_ = weights_ptr_ + offset; offset += backbone_units_;
+        trf_ffn2_w_ = weights_ptr_ + offset; offset += d_model_ * backbone_units_;
+        trf_ffn2_b_ = weights_ptr_ + offset; offset += d_model_;
+        trf_norm1_w_ = weights_ptr_ + offset; offset += d_model_;
+        trf_norm1_b_ = weights_ptr_ + offset; offset += d_model_;
+        trf_norm2_w_ = weights_ptr_ + offset; offset += d_model_;
+        trf_norm2_b_ = weights_ptr_ + offset; offset += d_model_;
+    }
     
     is_loaded = true;
     return true;
@@ -99,8 +128,14 @@ std::vector<float> ESPOmniEngine::Step(const float* sensors, float dt, float abs
     // Phase 2: Continuous Temporal Encoding (CTE)
     add_temporal_encoding(abs_time);
     
-    // Phase 3: Exact BioLiquidCell
-    apply_bio_liquid_cell(dt);
+    // Phase 3: Architecture Inference
+    if (architecture_type_ == 0) {
+        apply_bio_liquid_cell(dt);
+    } else if (architecture_type_ == 1) {
+        apply_gru_cell();
+    } else if (architecture_type_ == 2) {
+        apply_transformer_layer();
+    }
     
     // Phase 4: Action Generation (Using current state)
     std::vector<float> action(output_dim_, 0.0f);
@@ -178,5 +213,76 @@ void ESPOmniEngine::apply_bio_liquid_cell(float dt) {
         float t_scaled = ts * std::abs(time_scale_[i]);
         float t_interp = sigmoid(time_a_out[i] * t_scaled + time_b_out[i]);
         state_buffer_[i] = ff1[i] * (1.0f - t_interp) + t_interp * ff2[i];
+    }
+}
+
+void ESPOmniEngine::apply_gru_cell() {
+    float w_ih_out[256 * 3], w_hh_out[256 * 3];
+    
+    matmul(gru_w_ih_, gru_b_ih_, latents_, w_ih_out, 3 * d_model_, d_model_);
+    matmul(gru_w_hh_, gru_b_hh_, state_buffer_, w_hh_out, 3 * d_model_, d_model_);
+    
+    for (uint32_t i = 0; i < d_model_; ++i) {
+        float r_val = sigmoid(w_ih_out[i] + w_hh_out[i]);
+        float z_val = sigmoid(w_ih_out[d_model_ + i] + w_hh_out[d_model_ + i]);
+        float n_val = std::tanh(w_ih_out[2 * d_model_ + i] + r_val * w_hh_out[2 * d_model_ + i]);
+        
+        state_buffer_[i] = (1.0f - z_val) * n_val + z_val * state_buffer_[i];
+    }
+}
+
+void ESPOmniEngine::apply_transformer_layer() {
+    for (uint32_t i = 0; i < d_model_; ++i) {
+        x_in_[i] = latents_[i];
+        x_in_[d_model_ + i] = state_buffer_[i];
+    }
+    
+    float x_proj[256];
+    matmul(trf_input_proj_w_, trf_input_proj_b_, x_in_, x_proj, d_model_, 2 * d_model_);
+    
+    float q[256], k[256], v[256];
+    matmul(trf_wq_w_, trf_wq_b_, x_proj, q, d_model_, d_model_);
+    matmul(trf_wk_w_, trf_wk_b_, x_proj, k, d_model_, d_model_);
+    matmul(trf_wv_w_, trf_wv_b_, x_proj, v, d_model_, d_model_);
+    
+    // Point-wise self-attention (sequence length 1)
+    // context = v
+    
+    float wo_out[256];
+    matmul(trf_wo_w_, trf_wo_b_, v, wo_out, d_model_, d_model_);
+    
+    float out1[256];
+    float mean1 = 0, var1 = 0;
+    for(uint32_t i=0; i<d_model_; ++i) {
+        out1[i] = x_proj[i] + wo_out[i];
+        mean1 += out1[i];
+    }
+    mean1 /= d_model_;
+    for(uint32_t i=0; i<d_model_; ++i) var1 += (out1[i] - mean1) * (out1[i] - mean1);
+    var1 /= d_model_;
+    float std1 = std::sqrt(var1 + 1e-5f);
+    for(uint32_t i=0; i<d_model_; ++i) {
+        out1[i] = ((out1[i] - mean1) / std1) * trf_norm1_w_[i] + trf_norm1_b_[i];
+    }
+    
+    float ffn1_out[256];
+    matmul(trf_ffn1_w_, trf_ffn1_b_, out1, ffn1_out, backbone_units_, d_model_);
+    for(uint32_t i=0; i<backbone_units_; ++i) ffn1_out[i] = std::max(0.0f, ffn1_out[i]); // ReLU
+    
+    float ffn2_out[256];
+    matmul(trf_ffn2_w_, trf_ffn2_b_, ffn1_out, ffn2_out, d_model_, backbone_units_);
+    
+    float out2[256];
+    float mean2 = 0, var2 = 0;
+    for(uint32_t i=0; i<d_model_; ++i) {
+        out2[i] = out1[i] + ffn2_out[i];
+        mean2 += out2[i];
+    }
+    mean2 /= d_model_;
+    for(uint32_t i=0; i<d_model_; ++i) var2 += (out2[i] - mean2) * (out2[i] - mean2);
+    var2 /= d_model_;
+    float std2 = std::sqrt(var2 + 1e-5f);
+    for(uint32_t i=0; i<d_model_; ++i) {
+        state_buffer_[i] = ((out2[i] - mean2) / std2) * trf_norm2_w_[i] + trf_norm2_b_[i];
     }
 }

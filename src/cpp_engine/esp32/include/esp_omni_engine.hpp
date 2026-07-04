@@ -31,6 +31,7 @@ private:
     uint32_t output_dim_;
     uint32_t backbone_units_;
     uint32_t total_weights_;
+    uint8_t architecture_type_; // 0: CfC, 1: GRU, 2: Transformer
     
     // Statically allocated buffers (prevents OOM fragmentation)
     // Reasonable maximums (256) guarantee constant deterministic SRAM
@@ -60,10 +61,38 @@ private:
     const float* time_b_b_;
     const float* time_scale_;
 
+    // Pointers for GRU (Arch 1)
+    const float* gru_w_ih_;
+    const float* gru_w_hh_;
+    const float* gru_b_ih_;
+    const float* gru_b_hh_;
+
+    // Pointers for Transformer (Arch 2)
+    const float* trf_input_proj_w_;
+    const float* trf_input_proj_b_;
+    const float* trf_wq_w_;
+    const float* trf_wq_b_;
+    const float* trf_wk_w_;
+    const float* trf_wk_b_;
+    const float* trf_wv_w_;
+    const float* trf_wv_b_;
+    const float* trf_wo_w_;
+    const float* trf_wo_b_;
+    const float* trf_ffn1_w_;
+    const float* trf_ffn1_b_;
+    const float* trf_ffn2_w_;
+    const float* trf_ffn2_b_;
+    const float* trf_norm1_w_;
+    const float* trf_norm1_b_;
+    const float* trf_norm2_w_;
+    const float* trf_norm2_b_;
+
     // Neural Processing Pipeline
     void apply_input_projection(const float* sensors);
     void add_temporal_encoding(float abs_time);
     void apply_bio_liquid_cell(float dt);
+    void apply_gru_cell();
+    void apply_transformer_layer();
     
     // Math Utilities
     float lecun_activation(float x) const { return 1.7159f * std::tanh(0.666f * x); }
