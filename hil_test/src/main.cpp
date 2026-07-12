@@ -3,11 +3,22 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include "esp_omni_engine.hpp"
+#include "OmniEngineLSTM.hpp"
+#include "OmniEngineGRU.hpp"
 
-// Physical HIL Test for Inverted Pendulum
-// Reads real I2C MPU6050 data and outputs control force via PWM
+// Architecture selection (uncomment one)
+#define USE_CFC
+// #define USE_LSTM
+// #define USE_GRU
 
+#ifdef USE_CFC
 ESPOmniEngine engine;
+#elif defined(USE_LSTM)
+OmniEngineLSTM engine;
+#elif defined(USE_GRU)
+OmniEngineGRU engine;
+#endif
+
 Adafruit_MPU6050 mpu;
 
 // Motor PWM config
@@ -21,8 +32,9 @@ float state_vector[4] = {0.0f, 0.0f, 0.0f, 0.0f}; // [pos, vel, angle, ang_vel]
 unsigned long last_time = 0;
 
 // Dummy pointer for the .omnibit payload mapped via XIP (DROM)
-extern const unsigned char cfc_pendulum_omnibit[];
-extern const size_t cfc_pendulum_omnibit_len;
+// In a real application, these point to the compiled .omnibit payload
+extern const unsigned char payload_omnibit[];
+extern const size_t payload_omnibit_len;
 
 void setup() {
     Serial.begin(115200);
@@ -42,8 +54,8 @@ void setup() {
     ledcAttachPin(MOTOR_PWM_PIN, PWM_CHANNEL);
     pinMode(MOTOR_DIR_PIN, OUTPUT);
 
-    Serial.println("Loading XIP CfC Model...");
-    if (!engine.Load(cfc_pendulum_omnibit, cfc_pendulum_omnibit_len)) {
+    Serial.println("Loading XIP Model...");
+    if (!engine.Load(payload_omnibit, payload_omnibit_len)) {
         Serial.println("Failed to load OmniEngine payload.");
         while(1);
     }
@@ -65,11 +77,16 @@ void loop() {
     state_vector[2] = atan2(a.acceleration.y, a.acceleration.z); // Angle
     state_vector[3] = g.gyro.x; // Angular velocity
 
-    // Evaluate CfC Model in continuous time
+    // Evaluate Model
+#ifdef USE_CFC
     const float* force_prediction = engine.Step(state_vector, dt, current_time / 1000000.0f);
+    float force = force_prediction[0];
+#else
+    std::vector<float> action = engine.Step(state_vector);
+    float force = action[0];
+#endif
     
     // Actuate motor
-    float force = force_prediction[0];
     if (force > 0) {
         digitalWrite(MOTOR_DIR_PIN, HIGH);
     } else {
