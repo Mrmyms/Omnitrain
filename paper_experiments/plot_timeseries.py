@@ -32,17 +32,21 @@ def generate_plot():
     cfc.eval()
     lstm.eval()
     
-    # Take a 100-step slice for the plot
+    # Evaluate on the full sequence first to maintain hidden state
+    X_60_full = torch.FloatTensor(X_60).unsqueeze(0)
+    T_full = torch.FloatTensor(T).unsqueeze(0)
+    
+    with torch.no_grad():
+        cfc_pred_full = cfc(X_60_full, T_full).squeeze().numpy()
+        lstm_pred_full = lstm(X_60_full).squeeze().numpy()
+        
+    # Take a 150-step slice for the plot
     start_idx = 500
     end_idx = 650
     
-    X_60_slice = torch.FloatTensor(X_60).unsqueeze(0)[:, start_idx:end_idx, :]
-    T_slice = torch.FloatTensor(T).unsqueeze(0)[:, start_idx:end_idx, :]
     Y_slice = Y[start_idx:end_idx, 0]
-    
-    with torch.no_grad():
-        cfc_pred = cfc(X_60_slice, T_slice).squeeze().numpy()
-        lstm_pred = lstm(X_60_slice).squeeze().numpy()
+    cfc_pred = cfc_pred_full[start_idx:end_idx]
+    lstm_pred = lstm_pred_full[start_idx:end_idx]
         
     # Plotting
     plt.figure(figsize=(10, 5))
