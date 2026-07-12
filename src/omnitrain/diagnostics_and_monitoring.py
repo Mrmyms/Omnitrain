@@ -197,7 +197,7 @@ def perform_health_check():
     print("=" * 50 + "\n")
 
 
-def generate_dashboard(bus: TokenBus, monitor: OmniHealthMonitor) -> Layout:
+def generate_dashboard(bus: TokenBus, monitor: OmniDiagnostic) -> Layout:
     layout = Layout()
     layout.split_column(Layout(name="head", size=3), Layout(name="body"), Layout(name="foot", size=5))
     layout["head"].update(Panel("OmniTrain Fleet Monitor v4.0", style="bold cyan"))
