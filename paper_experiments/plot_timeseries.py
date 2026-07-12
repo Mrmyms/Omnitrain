@@ -18,15 +18,15 @@ def generate_plot():
     hidden_dim = 16
     torch.manual_seed(42)
     
-    # Train CfC fast
+    # Train CfC properly
     print("Training CfC...")
     cfc = ContinuousCfC(4, hidden_dim, 1)
-    cfc = train_model(cfc, X_0, Y, T, epochs=20)
+    cfc = train_model(cfc, X_0, Y, T, epochs=80)
     
-    # Train LSTM fast
+    # Train LSTM properly
     print("Training LSTM...")
     lstm = DiscreteRNN(4, hidden_dim, 1, 'lstm')
-    lstm = train_model(lstm, X_0, Y, epochs=20)
+    lstm = train_model(lstm, X_0, Y, epochs=80)
     
     print("Evaluating sequences...")
     cfc.eval()
