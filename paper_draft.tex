@@ -88,11 +88,11 @@ Reading directly from SPI Flash is inherently slower than SRAM and prone to cach
 \label{tab:omnibit_layout}
 \begin{tabular}{|l|l|l|}
 \hline
-\textbf{Segment} & \textbf{Size (Bytes)} & \textbf{Description} \\ \hline
+\textbf{Segment} & \textbf{Size Bytes} & \textbf{Description} \\ \hline
 Magic + Version & 8 & Identifier, architecture flag, padding \\ \hline
 Dimensions & 24 & $d_{in}$, $d_{model}$, $d_{out}$, backbone, $N_{w}$, $N_{t}$ \\ \hline
-TOC Array & $N_{t} \times 4$ & Per-tensor size index for offset arithmetic \\ \hline
-Weights Blob & $N_{w} \times 4$ & All FP32 tensors, contiguous row-major \\ \hline
+TOC Array & $N_{t} \times 4$ & Index for offset arithmetic \\ \hline
+Weights Blob & $N_{w} \times 4$ & FP32 tensors, contiguous row-major \\ \hline
 \end{tabular}
 \end{table}
 
@@ -188,9 +188,9 @@ To isolate the architectural contribution of continuous-time dynamics from engin
 \begin{tabular}{|l|c|c|c|c|}
 \hline
 \textbf{Architecture} & \textbf{SRAM} & \textbf{Flash (ROM)} & \textbf{Latency} & \textbf{Power} \\ \hline
-LSTM (TFLite Micro)   & 42.5 KB       & 64.2 KB              & 8.12 ms          & 105 mW         \\ \hline
-GRU (TFLite Micro)    & 38.2 KB       & 58.1 KB              & 7.45 ms          & 98 mW          \\ \hline
-\textbf{CfC (OmniEngine)} & \textbf{1.2 KB} & \textbf{16.5 KB} & \textbf{3.43 ms} & \textbf{52 mW} \\ \hline
+LSTM   & 42.5 KB       & 64.2 KB              & 8.12 ms          & 105 mW         \\ \hline
+GRU    & 38.2 KB       & 58.1 KB              & 7.45 ms          & 98 mW          \\ \hline
+\textbf{CfC} & \textbf{1.2 KB} & \textbf{16.5 KB} & \textbf{3.43 ms} & \textbf{52 mW} \\ \hline
 \end{tabular}
 \end{table}
 
