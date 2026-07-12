@@ -103,7 +103,7 @@ if __name__ == "__main__":
     T = np.load("data/pendulum_T.npy")
     
     hidden_dim = 16 # roughly 4000 params for LSTM/GRU/CfC
-    seeds = [42, 100, 2026, 777, 999]
+    seeds = [42 + i for i in range(30)]
     
     raw_results = {"LSTM": {0: [], 20: [], 60: []}, 
                    "GRU": {0: [], 20: [], 60: []}, 
