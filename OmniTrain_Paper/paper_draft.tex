@@ -200,7 +200,7 @@ Unlike standard edge deployments that rely on INT8 Post-Training Quantization (P
 \section{Limitations}
 While the Zero-Copy architecture demonstrates significant efficiency gains, several limitations should be acknowledged:
 \begin{enumerate}
-    \item \textbf{Confounded comparison.} Comparing our bare-metal CfC execution directly against TFLite Micro deployments conflates mathematical advantages (CfC) with engineering optimizations (XIP).
+    \item \textbf{Baseline Framework Overhead.} While our primary architectural comparison relies on TFLite Micro as the industry standard baseline, this inherently conflates mathematical advantages with engineering optimizations. Although we mitigated this by implementing a secondary custom LSTM-XIP engine (Section V.C), expanding a fully optimized, native XIP baseline for all discrete RNN variants remains for future work.
     \item \textbf{Scalability ceiling.} Direct execution from external SPI Flash exposes the system to potential cache miss penalties. The ESP32-S3 possesses a relatively small Data Cache (32~KB / 64~KB). While 4,000-parameter models run efficiently, a model exceeding 50,000 parameters requires over 200~KB in FP32 format. This severely overflows the D-Cache, causing massive \textit{cache thrashing} as weights are constantly reloaded from the SPI Flash at each inference step, degrading latency non-linearly.
     \item \textbf{Statistical power.} While 5 random initialization seeds were used to report variance, a larger sample size is required to establish rigorous statistical significance.
 \end{enumerate}
