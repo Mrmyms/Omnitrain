@@ -6,9 +6,10 @@
 [![C++17](https://img.shields.io/badge/C++-17-blue.svg?logo=c%2B%2B)](https://isocpp.org/)
 [![Paper](https://img.shields.io/badge/Paper-Peer%20Review-brightgreen.svg)]()
 [![Hardware](https://img.shields.io/badge/Hardware-All-orange.svg)]()
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)]()
 
 > [!IMPORTANT]
-> **Peer Review Reproducibility:** If you are reviewing the paper *"Efficient Closed-Form Continuous-Time Neural Networks on Commodity Microcontrollers"*, the exact code, datasets, and scripts to reproduce the Inverted Pendulum (CartPole) experiments and visualizations are located in the **[`paper_experiments/`](./paper_experiments/)** directory.
+> **Peer Review Reproducibility:** If you are reviewing the paper *"Efficient Closed-Form Continuous-Time Neural Networks on Commodity Microcontrollers"*, the exact code, datasets, and scripts to reproduce the experiments are located in the **[`paper_experiments/`](./paper_experiments/)** directory. A `Dockerfile` is also provided in the root directory to guarantee bit-exact reproducibility across host operating systems.
 
 > [!NOTE]
 > **Research Status:** OmniTrain is an active research framework designed for high-frequency, safety-critical robotics. It bridges the gap between biological neural efficiency and formal mathematical safety constraints.
@@ -26,7 +27,8 @@ OmniTrain is a production-grade framework for building **Bio-Inspired Conectomas
 - **Continuous-Time Temporal Resilience:** ODE solvers naturally interpolate missing sensor frames and irregular intervals (jitter), outperforming discrete-time architectures like LSTMs.
 - **Asynchronous Sensor Fusion (ZOH):** Zero-Order Hold (ZOH) buffers in the `OmniStream` layer natively fuse disparate sensor frequencies (e.g., 20Hz LiDAR and 1Hz Vision) without causing neural "double-evolution" or artificial latency.
 - **Formal Safety Guarantees (OmniShield):** An integrated Control Barrier Function (CBF) enforced by an ICNN ensures that exploratory or out-of-distribution neural actions are strictly projected back into a mathematically proven safe set in $O(1)$ time.
-- **Zero-Copy Edge Deployment:** Compiles trained PyTorch parameters into the `.omnibit` V3 format, a highly structured binary payload optimized for zero-copy execution on deeply embedded microcontrollers (e.g., ESP32, RP2040) yielding sub-3ms latencies.
+- **Execute-in-Place (XIP) Edge Deployment:** Compiles trained PyTorch parameters into the `.omnibit` V3 format, a highly structured binary payload optimized for direct ROM-to-Cache mapping on deeply embedded microcontrollers (e.g., ESP32, RP2040) yielding sub-3ms latencies.
+- **Physical HIL Validation:** Included physical Hardware-in-the-Loop (HIL) tests utilizing I2C MPU6050 sensors and real-world noisy environments to validate continuous-time robustness.
 
 ---
 
@@ -45,6 +47,12 @@ git clone https://github.com/Mrmyms/Omnitrain.git
 cd Omnitrain
 pip install -r requirements.txt
 pip install -e .
+```
+
+You can also use the included `Dockerfile` to build a sandboxed, fully reproducible environment:
+```bash
+docker build -t omnitrain:latest .
+docker run -it omnitrain:latest
 ```
 
 ### 2. Scaffold a New Project
@@ -68,7 +76,7 @@ metrics = trainer.fit("training_data.csv", epochs=30)
 ```python
 from omnitrain import EdgeDeployer, ESP32Exporter
 
-# Export to Microcontrollers (ESP32) Zero-Copy Binary
+# Export to Microcontrollers (ESP32) XIP Binary
 exporter = ESP32Exporter(output_dir="esp32_firmware/data")
 exporter.export(model, input_dim=64, d_model=128, output_dim=4, filename="model.omnibit")
 ```

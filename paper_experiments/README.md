@@ -2,7 +2,7 @@
 
 This directory contains the exact code necessary to reproduce the data, training results, and visualizations presented in the paper *"Efficient Closed-Form Continuous-Time Neural Networks on Commodity Microcontrollers"*.
 
-The experiment demonstrates a **Processor-in-the-Loop (PiL)** simulation of an Inverted Pendulum (CartPole). It proves that continuous-time neural networks (CfC) can maintain predictive stability over lossy communication channels (temporal jitter), whereas traditional discrete-time RNNs (LSTM, GRU) experience catastrophic failure.
+The experiment demonstrates a **Processor-in-the-Loop (PiL)** simulation of an Inverted Pendulum (CartPole), as well as physical **Hardware-in-the-Loop (HIL)** capabilities. It proves that continuous-time neural networks (CfC) can maintain predictive stability over lossy communication channels (temporal jitter), whereas traditional discrete-time RNNs (LSTM, GRU) experience catastrophic failure.
 
 ## 1. Environment Setup
 
@@ -36,9 +36,22 @@ python train_and_compare.py
 
 ## 4. Visualizing Temporal Resilience
 
-Read the experimental results and generate the exact vector/PNG plot included in the paper, contrasting the resilience of the Zero-Copy CfC architecture against the TFLite baselines.
+Read the experimental results and generate the exact vector/PNG plot included in the paper, contrasting the resilience of the Execute-in-Place (XIP) CfC architecture against the TFLite baselines.
 
 ```bash
 python plot_results.py
 ```
 *Outputs: `data/temporal_resilience_chart.png`*
+
+## 5. INT8 Quantization Verification & Time-Series Plot
+
+You can also run the Dynamic Post-Training Quantization (PTQ) test to verify the Silicon Parity of the CfC model, and generate the time-series trajectory plot demonstrating temporal divergence:
+
+```bash
+# Evaluate PTQ INT8 performance under extreme jitter
+python test_int8_loss.py
+
+# Generate qualitative time-series comparison
+python plot_timeseries.py
+```
+*Outputs: `../ai_context/timeseries_comparison.png`*
