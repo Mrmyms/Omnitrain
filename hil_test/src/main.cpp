@@ -3,22 +3,11 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include "esp_omni_engine.hpp"
-#include "OmniEngineLSTM.hpp"
-#include "OmniEngineGRU.hpp"
 
-// Architecture selection (uncomment one)
+// Architecture selection
 #define USE_CFC
-// #define USE_LSTM
-// #define USE_GRU
 
-#ifdef USE_CFC
 ESPOmniEngine engine;
-#elif defined(USE_LSTM)
-OmniEngineLSTM engine;
-#elif defined(USE_GRU)
-OmniEngineGRU engine;
-#endif
-
 Adafruit_MPU6050 mpu;
 
 // Motor PWM config
@@ -32,7 +21,6 @@ float state_vector[4] = {0.0f, 0.0f, 0.0f, 0.0f}; // [pos, vel, angle, ang_vel]
 unsigned long last_time = 0;
 
 // Dummy pointer for the .omnibit payload mapped via XIP (DROM)
-// In a real application, these point to the compiled .omnibit payload
 extern const unsigned char payload_omnibit[];
 extern const size_t payload_omnibit_len;
 
@@ -41,7 +29,7 @@ void setup() {
     Wire.begin(21, 22); // I2C pins for ESP32
 
     if (!mpu.begin()) {
-        Serial.println("Failed to find MPU6050 chip");
+        Serial.println("ERR: Failed to find MPU6050 chip");
         while (1) { delay(10); }
     }
     
@@ -54,51 +42,68 @@ void setup() {
     ledcAttachPin(MOTOR_PWM_PIN, PWM_CHANNEL);
     pinMode(MOTOR_DIR_PIN, OUTPUT);
 
-    Serial.println("Loading XIP Model...");
+    // Load payload from Flash (ROM)
     if (!engine.Load(payload_omnibit, payload_omnibit_len)) {
-        Serial.println("Failed to load OmniEngine payload.");
+        Serial.println("ERR: Failed to load OmniEngine payload.");
         while(1);
     }
     
-    Serial.println("HIL System Ready.");
+    Serial.println("READY");
     last_time = micros();
 }
 
 void loop() {
-    unsigned long current_time = micros();
-    float dt = (current_time - last_time) / 1000000.0f;
-    last_time = current_time;
+    if (Serial.available()) {
+        String input = Serial.readStringUntil('\n');
+        
+        // Parse simulated CartPole state injected from PC (Hardware-in-the-Loop)
+        // Format: "POS,VEL,ANG,ANG_VEL"
+        int first_comma = input.indexOf(',');
+        int second_comma = input.indexOf(',', first_comma + 1);
+        int third_comma = input.indexOf(',', second_comma + 1);
+        
+        if (first_comma > 0 && second_comma > 0 && third_comma > 0) {
+            state_vector[0] = input.substring(0, first_comma).toFloat();
+            state_vector[1] = input.substring(first_comma + 1, second_comma).toFloat();
+            state_vector[2] = input.substring(second_comma + 1, third_comma).toFloat();
+            state_vector[3] = input.substring(third_comma + 1).toFloat();
+            
+            unsigned long current_time = micros();
+            float dt = (current_time - last_time) / 1000000.0f;
+            last_time = current_time;
 
-    sensors_event_t a, g, temp;
-    mpu.getEvent(&a, &g, &temp);
+            // --- HARDWARE DUMMY LOAD ---
+            // We read the physical I2C MPU6050 here purely to generate physical bus jitter 
+            // and interrupt overhead, as described in the paper methodology.
+            sensors_event_t a, g, temp;
+            mpu.getEvent(&a, &g, &temp);
+            // ---------------------------
 
-    // Construct state vector from sensor data
-    // (Simplified integration for CartPole)
-    state_vector[2] = atan2(a.acceleration.y, a.acceleration.z); // Angle
-    state_vector[3] = g.gyro.x; // Angular velocity
+            // Normalize states using hardcoded dataset statistics
+            const float x_mean[4] = {0.00042742f, -0.00004877f, -0.00002502f, -0.00010277f};
+            const float x_std[4]  = {0.00894568f,  0.01085484f,  0.00127859f,  0.00267853f};
+            
+            float norm_state[4];
+            for (int i = 0; i < 4; i++) {
+                norm_state[i] = (state_vector[i] - x_mean[i]) / x_std[i];
+            }
 
-    // Evaluate Model
-#ifdef USE_CFC
-    const float* force_prediction = engine.Step(state_vector, dt, current_time / 1000000.0f);
-    float force = force_prediction[0];
-#else
-    std::vector<float> action = engine.Step(state_vector);
-    float force = action[0];
-#endif
-    
-    // Actuate motor
-    if (force > 0) {
-        digitalWrite(MOTOR_DIR_PIN, HIGH);
-    } else {
-        digitalWrite(MOTOR_DIR_PIN, LOW);
+            // Evaluate CfC Continuous-Time Model via Execute-in-Place
+            std::vector<float> action = engine.Step(norm_state, dt, current_time / 1000000.0f);
+            float force = action[0];
+            
+            // Actuate physical motor based on computed force
+            if (force > 0) {
+                digitalWrite(MOTOR_DIR_PIN, HIGH);
+            } else {
+                digitalWrite(MOTOR_DIR_PIN, LOW);
+            }
+            int pwm_val = min(255, (int)(abs(force) * 255.0f));
+            ledcWrite(PWM_CHANNEL, pwm_val);
+
+            // Send force back to PC Simulation
+            Serial.print("F:");
+            Serial.println(force, 4);
+        }
     }
-    
-    int pwm_val = min(255, (int)(abs(force) * 255.0f));
-    ledcWrite(PWM_CHANNEL, pwm_val);
-
-    // Logging for HIL evaluation
-    Serial.printf("T:%.3f, A:%.2f, V:%.2f, F:%.2f\n", dt, state_vector[2], state_vector[3], force);
-    
-    // ZOH stabilization wait (target 50Hz)
-    delay(20);
 }

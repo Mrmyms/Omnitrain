@@ -43,13 +43,11 @@ bool ESPOmniEngine::Load(const unsigned char* omnibit_data, size_t length) {
     // 4. Strict offset mapping for sequential matrix access
     uint32_t offset = 0;
     
-    // Input Projector
-    offset += (input_dim_ * d_model_) + d_model_;
-    
-    // CTE
-    offset += (d_model_ / 2) * 2 + d_model_; 
-    
     if (architecture_type_ == 0) { // CfC
+        // Input Projector
+        offset += (input_dim_ * d_model_) + d_model_;
+        // CTE
+        offset += (d_model_ / 2) * 2 + d_model_;
         // BioLiquidCell
         sensory_w_ = weights_ptr_ + offset; offset += input_dim_;
         sensory_b_ = weights_ptr_ + offset; offset += input_dim_;
@@ -99,6 +97,17 @@ bool ESPOmniEngine::Load(const unsigned char* omnibit_data, size_t length) {
         trf_norm1_b_ = weights_ptr_ + offset; offset += d_model_;
         trf_norm2_w_ = weights_ptr_ + offset; offset += d_model_;
         trf_norm2_b_ = weights_ptr_ + offset; offset += d_model_;
+    } else if (architecture_type_ == 3) { // Full CfC (No CTE/Proj)
+        cfc_bb_w_ = weights_ptr_ + offset; offset += backbone_units_ * (input_dim_ + d_model_);
+        cfc_bb_b_ = weights_ptr_ + offset; offset += backbone_units_;
+        cfc_f_w_ = weights_ptr_ + offset; offset += d_model_ * backbone_units_;
+        cfc_f_b_ = weights_ptr_ + offset; offset += d_model_;
+        cfc_g_w_ = weights_ptr_ + offset; offset += d_model_ * backbone_units_;
+        cfc_g_b_ = weights_ptr_ + offset; offset += d_model_;
+        cfc_h_w_ = weights_ptr_ + offset; offset += d_model_ * backbone_units_;
+        cfc_h_b_ = weights_ptr_ + offset; offset += d_model_;
+        cfc_fc_w_ = weights_ptr_ + offset; offset += output_dim_ * d_model_;
+        cfc_fc_b_ = weights_ptr_ + offset; offset += output_dim_;
     }
     
     is_loaded = true;
@@ -122,11 +131,13 @@ std::vector<float> ESPOmniEngine::Step(const float* sensors, float dt, float abs
     
     std::memset(latents_, 0, d_model_ * sizeof(float));
     
-    // Phase 1: Adaptive Projection
-    apply_input_projection(sensors);
-    
-    // Phase 2: Continuous Temporal Encoding (CTE)
-    add_temporal_encoding(abs_time);
+    if (architecture_type_ != 3) {
+        // Phase 1: Adaptive Projection
+        apply_input_projection(sensors);
+        
+        // Phase 2: Continuous Temporal Encoding (CTE)
+        add_temporal_encoding(abs_time);
+    }
     
     // Phase 3: Architecture Inference
     if (architecture_type_ == 0) {
@@ -135,12 +146,18 @@ std::vector<float> ESPOmniEngine::Step(const float* sensors, float dt, float abs
         apply_gru_cell();
     } else if (architecture_type_ == 2) {
         apply_transformer_layer();
+    } else if (architecture_type_ == 3) {
+        apply_cfc_full_cell(sensors, dt);
     }
     
-    // Phase 4: Action Generation (Using current state)
+    // Phase 4: Action Generation
     std::vector<float> action(output_dim_, 0.0f);
-    for (uint32_t i = 0; i < output_dim_ && i < d_model_; ++i) {
-        action[i] = state_buffer_[i];
+    if (architecture_type_ == 3) {
+        matmul(cfc_fc_w_, cfc_fc_b_, state_buffer_, action.data(), output_dim_, d_model_);
+    } else {
+        for (uint32_t i = 0; i < output_dim_ && i < d_model_; ++i) {
+            action[i] = state_buffer_[i];
+        }
     }
     
     return action;
@@ -284,5 +301,34 @@ void ESPOmniEngine::apply_transformer_layer() {
     float std2 = std::sqrt(var2 + 1e-5f);
     for(uint32_t i=0; i<d_model_; ++i) {
         state_buffer_[i] = ((out2[i] - mean2) / std2) * trf_norm2_w_[i] + trf_norm2_b_[i];
+    }
+}
+
+void ESPOmniEngine::apply_cfc_full_cell(const float* sensors, float dt) {
+    // 1. Prepare input: cat(sensors, state_buffer_)
+    for (uint32_t i = 0; i < input_dim_; ++i) {
+        x_in_[i] = sensors[i];
+    }
+    for (uint32_t i = 0; i < d_model_; ++i) {
+        x_in_[input_dim_ + i] = state_buffer_[i];
+    }
+    
+    // 2. Backbone computation (bb = Tanh(Linear(x_in)))
+    matmul(cfc_bb_w_, cfc_bb_b_, x_in_, b_state_, backbone_units_, input_dim_ + d_model_);
+    for(uint32_t i=0; i < backbone_units_; ++i) b_state_[i] = std::tanh(b_state_[i]);
+    
+    // 3. Compute heads
+    float f_out[256], g_out[256], h_out[256];
+    matmul(cfc_f_w_, cfc_f_b_, b_state_, f_out, d_model_, backbone_units_);
+    matmul(cfc_g_w_, cfc_g_b_, b_state_, g_out, d_model_, backbone_units_);
+    matmul(cfc_h_w_, cfc_h_b_, b_state_, h_out, d_model_, backbone_units_);
+    
+    // 4. State update: t_gate = sigmoid(-f * dt)
+    float ts = std::max(dt, 0.0f);
+    for (uint32_t i = 0; i < d_model_; ++i) {
+        float t_gate = sigmoid(-f_out[i] * ts);
+        float g_cand = std::tanh(g_out[i]);
+        float h_cand = std::tanh(h_out[i]);
+        state_buffer_[i] = t_gate * g_cand + (1.0f - t_gate) * h_cand;
     }
 }

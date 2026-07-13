@@ -87,12 +87,25 @@ private:
     const float* trf_norm2_w_;
     const float* trf_norm2_b_;
 
+    // Pointers for Full CfC (Arch 3)
+    const float* cfc_bb_w_;
+    const float* cfc_bb_b_;
+    const float* cfc_f_w_;
+    const float* cfc_f_b_;
+    const float* cfc_g_w_;
+    const float* cfc_g_b_;
+    const float* cfc_h_w_;
+    const float* cfc_h_b_;
+    const float* cfc_fc_w_;
+    const float* cfc_fc_b_;
+
     // Neural Processing Pipeline
     void apply_input_projection(const float* sensors);
     void add_temporal_encoding(float abs_time);
     void apply_bio_liquid_cell(float dt);
     void apply_gru_cell();
     void apply_transformer_layer();
+    void apply_cfc_full_cell(const float* sensors, float dt);
     
     // Math Utilities
     float lecun_activation(float x) const { return 1.7159f * std::tanh(0.666f * x); }

@@ -1308,3 +1308,27 @@ class BioConectomaHub(nn.Module):
         }
         
         return motor_out, next_states
+
+class ContinuousCfCCell(nn.Module):
+    """Full 3-branch CfC cell (Hasani et al. 2022) with a single shared backbone.
+    
+    Implements: x(t) = σ(-f(x,I;θ_f)·Δt) ⊙ g(x,I;θ_g) + [1-σ(-f·Δt)] ⊙ h(x,I;θ_h)
+    Designed for extremely lightweight zero-copy XIP deployment.
+    """
+    def __init__(self, input_dim: int, hidden_dim: int, backbone_units: int = 32):
+        super().__init__()
+        self.hidden_size = hidden_dim
+        self.backbone_units = backbone_units
+        self.backbone = nn.Sequential(
+            nn.Linear(input_dim + hidden_dim, backbone_units), nn.Tanh()
+        )
+        self.f_head = nn.Linear(backbone_units, hidden_dim)
+        self.g_head = nn.Linear(backbone_units, hidden_dim)
+        self.h_head = nn.Linear(backbone_units, hidden_dim)
+
+    def forward(self, x: torch.Tensor, h_prev: torch.Tensor, dt: torch.Tensor):
+        bb = self.backbone(torch.cat([x, h_prev], dim=-1))
+        t_gate = torch.sigmoid(-self.f_head(bb) * dt)
+        g_cand = torch.tanh(self.g_head(bb))
+        h_cand = torch.tanh(self.h_head(bb))
+        return t_gate * g_cand + (1.0 - t_gate) * h_cand

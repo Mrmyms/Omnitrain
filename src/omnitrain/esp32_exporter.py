@@ -108,9 +108,34 @@ class ESP32Exporter:
                 push_tensor('trf_norm1_b', brain.norm1.bias)
                 push_tensor('trf_norm2_w', brain.norm2.weight)
                 push_tensor('trf_norm2_b', brain.norm2.bias)
+            elif type(brain).__name__ in ['ContinuousCfCCell', 'ContinuousCfCFull']:
+                arch_flag = 3
+                push_tensor('cfc_bb_w', brain.backbone[0].weight)
+                push_tensor('cfc_bb_b', brain.backbone[0].bias)
+                push_tensor('cfc_f_w', brain.f_head.weight)
+                push_tensor('cfc_f_b', brain.f_head.bias)
+                push_tensor('cfc_g_w', brain.g_head.weight)
+                push_tensor('cfc_g_b', brain.g_head.bias)
+                push_tensor('cfc_h_w', brain.h_head.weight)
+                push_tensor('cfc_h_b', brain.h_head.bias)
             else:
                 # Legacy BioLiquidCell
                 extract_cell('legacy_', brain)
+        elif type(model).__name__ == 'ContinuousCfCFull':
+            arch_flag = 3
+            push_tensor('cfc_bb_w', model.backbone[0].weight)
+            push_tensor('cfc_bb_b', model.backbone[0].bias)
+            push_tensor('cfc_f_w', model.f_head.weight)
+            push_tensor('cfc_f_b', model.f_head.bias)
+            push_tensor('cfc_g_w', model.g_head.weight)
+            push_tensor('cfc_g_b', model.g_head.bias)
+            push_tensor('cfc_h_w', model.h_head.weight)
+            push_tensor('cfc_h_b', model.h_head.bias)
+            
+            # Export FC layer as the sole head
+            if hasattr(model, 'fc'):
+                push_tensor('fc_w', model.fc.weight)
+                push_tensor('fc_b', model.fc.bias)
 
         # 4. Heads
         if heads:

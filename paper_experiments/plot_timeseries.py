@@ -15,32 +15,43 @@ def generate_plot():
     Y = np.load("data/pendulum_Y.npy")
     T = np.load("data/pendulum_T.npy")
     
+    # Normalize inputs! (Fix)
+    X_mean, X_std = X_0.mean(0), X_0.std(0) + 1e-8
+    X_0_n = (X_0 - X_mean) / X_std
+    X_60_n = (X_60 - X_mean) / X_std
+    
     hidden_dim = 16
     torch.manual_seed(42)
+    epochs = 150
     
-    # Train CfC properly
+    # Train CfC
     print("Training CfC...")
-    cfc = ContinuousCfC(4, hidden_dim, 1)
-    cfc = train_model(cfc, X_0, Y, T, epochs=50)
+    cfc = ContinuousCfC(4, hidden_dim, 1, backbone_units=32)
+    cfc = train_model(cfc, X_0_n, Y, T, epochs=epochs)
     
-    # Train LSTM properly
+    # Train LSTM
     print("Training LSTM...")
     lstm = DiscreteRNN(4, hidden_dim, 1, 'lstm')
-    lstm = train_model(lstm, X_0, Y, epochs=50)
+    lstm = train_model(lstm, X_0_n, Y, epochs=epochs)
+
+    # Train GRU
+    print("Training GRU...")
+    gru = DiscreteRNN(4, hidden_dim, 1, 'gru')
+    gru = train_model(gru, X_0_n, Y, epochs=epochs)
     
     print("Evaluating sequences...")
     cfc.eval()
     lstm.eval()
+    gru.eval()
     
-    # Evaluate on the full sequence first to maintain hidden state
-    X_60_full = torch.FloatTensor(X_60).unsqueeze(0)
+    X_60_full = torch.FloatTensor(X_60_n).unsqueeze(0)
     T_full = torch.FloatTensor(T).unsqueeze(0)
     
     with torch.no_grad():
         cfc_pred_full = cfc(X_60_full, T_full).squeeze().numpy()
         lstm_pred_full = lstm(X_60_full).squeeze().numpy()
+        gru_pred_full = gru(X_60_full).squeeze().numpy()
         
-    # Take a 150-step slice for the plot
     start_idx = 500
     end_idx = 650
     
@@ -48,14 +59,15 @@ def generate_plot():
     time_axis = T[start_idx:end_idx, 0]
     cfc_pred = cfc_pred_full[start_idx:end_idx]
     lstm_pred = lstm_pred_full[start_idx:end_idx]
+    gru_pred = gru_pred_full[start_idx:end_idx]
         
     # Plotting
     plt.figure(figsize=(10, 5))
-    time_axis = T[start_idx:end_idx, 0]
     
-    plt.plot(time_axis, Y_slice, label="Ground Truth (Target Force)", color='black', linewidth=2)
-    plt.plot(time_axis, lstm_pred, label="LSTM (60% Packet Loss)", color='red', linestyle='--')
-    plt.plot(time_axis, cfc_pred, label="CfC (60% Packet Loss)", color='blue')
+    plt.plot(time_axis, Y_slice, label="Ground Truth", color='black', linewidth=2)
+    plt.plot(time_axis, lstm_pred, label="LSTM (60% Loss)", color='red', linestyle='--')
+    plt.plot(time_axis, gru_pred, label="GRU (60% Loss)", color='orange', linestyle='-.')
+    plt.plot(time_axis, cfc_pred, label="CfC (60% Loss)", color='blue')
     
     plt.title("Qualitative Time-Series Comparison Under 60% Packet Loss")
     plt.xlabel("Time (s)")
@@ -63,7 +75,7 @@ def generate_plot():
     plt.legend()
     plt.grid(True)
     
-    out_path = "../ai_context/timeseries_comparison.png"
+    out_path = "data/timeseries_comparison.png"
     plt.savefig(out_path, dpi=300, bbox_inches='tight')
     print(f"Saved to {out_path}")
 

@@ -1,8 +1,16 @@
+"""
+simulate_pendulum.py — Generate base CartPole trajectory for OmniTrain experiments.
+
+NOTE (fix #7): This script now generates ONLY the 0%-loss clean data.
+Packet-loss masking (20%, 60%) is applied PER SEED independently inside
+train_and_compare.py, so variance across seeds reflects both weight
+initialization and ZOH mask randomness.
+"""
 import numpy as np
 import os
 import argparse
 
-def generate_cartpole_data(num_samples=10000, dt=0.02):
+def generate_cartpole_data(num_samples=10000, dt=0.02, seed=0):
     """
     Generates synthetic Inverted Pendulum (CartPole) data.
     States: [cart position, cart velocity, pole angle, pole angular velocity]
@@ -67,20 +75,23 @@ def inject_packet_loss(X, Y, T, loss_prob=0.2):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--samples", type=int, default=5000)
+    parser.add_argument("--seed", type=int, default=0,
+                        help="RNG seed for reproducible data generation")
     args = parser.parse_args()
-    
-    X, Y, T = generate_cartpole_data(args.samples)
-    
+
+    np.random.seed(args.seed)
+    X, Y, T = generate_cartpole_data(args.samples, seed=args.seed)
+
     os.makedirs("data", exist_ok=True)
     np.save("data/pendulum_X_0loss.npy", X)
-    
-    X_20, _, _ = inject_packet_loss(X, Y, T, 0.20)
-    np.save("data/pendulum_X_20loss.npy", X_20)
-    
-    X_60, _, _ = inject_packet_loss(X, Y, T, 0.60)
-    np.save("data/pendulum_X_60loss.npy", X_60)
-    
     np.save("data/pendulum_Y.npy", Y)
     np.save("data/pendulum_T.npy", T)
-    
-    print(f"Generated {args.samples} samples of Inverted Pendulum PiL data.")
+
+    # Backward-compat stubs (train_and_compare.py regenerates these per seed)
+    np.save("data/pendulum_X_20loss.npy", X)   # placeholder — overridden per seed
+    np.save("data/pendulum_X_60loss.npy", X)   # placeholder — overridden per seed
+
+    print(f"[✓] Generated {args.samples} samples of CartPole data (seed={args.seed}).")
+    print(f"    {args.samples} steps × 0.02s = {args.samples*0.02:.1f}s simulated time.")
+    print("    ZOH packet-loss masking at 20%/60% applied per-seed in train_and_compare.py.")
+
