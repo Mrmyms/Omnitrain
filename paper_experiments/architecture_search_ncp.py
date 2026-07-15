@@ -7,39 +7,48 @@ import os
 import csv
 import itertools
 from time import time
+import multiprocessing as mp
 
 sys.path.append(os.path.abspath('../src'))
 from omnitrain.sparse_cfc import SparseCfC
 
 from train_f110_ncp import load_dataset, create_advanced_layered_mask
 
-def evaluate_architecture(n_sensory, n_process, n_header, density, X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, d_in, d_out, device):
+def evaluate_architecture_worker(config, X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, d_in, d_out, device_name, results_file):
+    device = torch.device(device_name)
+    
+    n_sensory = config['n_sensory']
+    n_process = config['n_process']
+    n_header = config['n_header']
+    density = config['density']
+    
     hidden = n_sensory + n_process + n_header
     
-    # 1. Create the structured Mask
+    # 1. Create Mask
     adj_matrix = create_advanced_layered_mask(d_in, n_sensory, n_process, n_header, density=density)
-    
     total_synapses = hidden * (d_in + hidden)
     active_synapses = int(adj_matrix.sum().item())
     
-    # 2. Instantiate SparseCfC
+    # 2. Instantiate Model
     model = SparseCfC(input_dim=d_in, hidden_dim=hidden, output_dim=d_out, adjacency_matrix=adj_matrix)
     model.to(device)
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
     criterion = nn.MSELoss()
     dataset = TensorDataset(X_tr, Y_tr, dt_tr)
-    # Using 4 workers for speed
-    loader = DataLoader(dataset, batch_size=256, shuffle=True, num_workers=4, pin_memory=True)
     
-    # Pre-masking FC
+    # We set num_workers=0 because we are already parallelizing the models. 
+    # Multiple dataloader threads per model would cause CPU thrashing.
+    loader = DataLoader(dataset, batch_size=256, shuffle=True, num_workers=0)
+    
     with torch.no_grad():
         model.fc.weight[:, :n_sensory + n_process] = 0.0
         model.fc.bias[:] = 0.0
         
     epochs = 30
+    start_t = time()
     
-    # 3. Train for exactly 30 epochs
+    # 3. Train
     for ep in range(epochs):
         model.train()
         for bx, by, bdt in loader:
@@ -48,58 +57,45 @@ def evaluate_architecture(n_sensory, n_process, n_header, density, X_tr, Y_tr, d
             preds = model(bx, bdt)
             loss = criterion(preds, by)
             loss.backward()
-            
-            # Mask gradients for non-header neurons
             model.fc.weight.grad[:, :n_sensory + n_process] = 0.0
-            
             optimizer.step()
-            
             with torch.no_grad():
                 model.fc.weight[:, :n_sensory + n_process] = 0.0
                 
-    # 4. Final Evaluation
+    # 4. Evaluate
     model.eval()
     with torch.no_grad():
-        val_preds = model(X_val, dt_val)
-        val_loss = criterion(val_preds, Y_val)
+        X_val_dev = X_val.to(device)
+        dt_val_dev = dt_val.to(device)
+        Y_val_dev = Y_val.to(device)
+        val_preds = model(X_val_dev, dt_val_dev)
+        val_loss = criterion(val_preds, Y_val_dev).item()
         
-    return val_loss.item(), hidden, active_synapses
-
-def evaluate_worker(args):
-    idx, total, combo, keys, X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, d_in, d_out, device = args
-    config = dict(zip(keys, combo))
+    elapsed = time() - start_t
+    print(f"✅ Config {config} -> MSE: {val_loss:.4f} | Synapses: {active_synapses} | Time: {elapsed:.1f}s")
     
-    print(f"\n[Worker] Started [{idx}/{total}] Config: {config}")
-    start_t = time()
-    
+    # Save instantly to CSV
+    with open(results_file, 'a', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            n_sensory, n_process, n_header, density,
+            hidden, active_synapses, val_loss
+        ])
+        
+def run_worker_task(args):
     try:
-        val_mse, total_neurons, active_synapses = evaluate_architecture(
-            config['n_sensory'], config['n_process'], config['n_header'], config['density'],
-            X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, d_in, d_out, device
-        )
-        elapsed = time() - start_t
-        print(f"[Worker] Finished [{idx}/{total}] -> MSE: {val_mse:.4f} | Neurons: {total_neurons} | Synapses: {active_synapses} | Time: {elapsed:.1f}s")
-        
-        return (config['n_sensory'], config['n_process'], config['n_header'], config['density'], total_neurons, active_synapses, val_mse)
-        
+        evaluate_architecture_worker(*args)
     except Exception as e:
-        print(f"[Worker] Error in config {config}: {e}")
-        return None
+        print(f"❌ Error in config {args[0]}: {e}")
 
 def main():
-    import multiprocessing as mp
-    try:
-        mp.set_start_method('spawn', force=True) # Required for CUDA multiprocess
-    except RuntimeError:
-        pass
-        
-    device = torch.device("mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu"))
-    print(f"Starting MULTI-CORE NCP Architecture Search on device: {device}")
+    # Enforce spawn for CUDA/MPS multiprocessing safety
+    mp.set_start_method('spawn', force=True)
+    
+    device_name = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Starting MULTI-CORE NCP Architecture Search. Accelerator: {device_name}")
     
     X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, mean_X, std_X = load_dataset()
-    X_val = X_val.to(device)
-    Y_val = Y_val.to(device)
-    dt_val = dt_val.to(device)
     
     d_in = X_tr.shape[2]
     d_out = Y_tr.shape[2]
@@ -123,23 +119,20 @@ def main():
     print(f"Total architectures to test: {len(combinations)}")
     
     # Prepare arguments for multiprocessing pool
-    pool_args = []
-    for idx, combo in enumerate(combinations):
-        pool_args.append((idx + 1, len(combinations), combo, keys, X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, d_in, d_out, device))
+    tasks = []
+    for combo in combinations:
+        config = dict(zip(keys, combo))
+        tasks.append((config, X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, d_in, d_out, device_name, results_file))
         
-    # Use 4 parallel workers (GPUs can multiplex multiple small training runs easily)
-    num_workers = min(4, mp.cpu_count())
-    print(f"Launching {num_workers} parallel workers...")
+    # Launch Process Pool
+    # We use 4 parallel processes. This heavily utilizes the GPU/CPU without causing Out Of Memory crashes.
+    num_processes = 4 
+    print(f"Launching Pool with {num_processes} parallel workers...")
     
-    with mp.Pool(processes=num_workers) as pool:
-        for result in pool.imap_unordered(evaluate_worker, pool_args):
-            if result is not None:
-                # Save to CSV instantly as results come in
-                with open(results_file, 'a', newline='') as f:
-                    writer = csv.writer(f)
-                    writer.writerow(result)
-                    
-    print("Multi-core architecture search completed!")
+    with mp.Pool(processes=num_processes) as pool:
+        pool.map(run_worker_task, tasks)
+        
+    print("Search Complete! Check data/ncp_search_results.csv")
 
 if __name__ == "__main__":
     main()
