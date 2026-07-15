@@ -17,7 +17,7 @@
 \maketitle
 
 \begin{abstract}
-Deploying sequence-modeling neural networks on deeply embedded hardware (TinyML) remains challenging due to the strict SRAM constraints of microcontrollers and the temporal jitter inherent to physical sensors. Traditional Recurrent Neural Networks (RNNs) such as LSTM and GRU assume discrete, synchronous time steps and are typically deployed through schema-heavy execution frameworks that incur substantial dynamic memory overhead. We present an end-to-end systems-engineering pipeline for the native, bare-metal deployment of Closed-form Continuous-time (CfC) neural networks on highly constrained hardware (ESP32-S3). A custom Execute-in-Place (XIP) parameter-mapping architecture (\texttt{.omnibit}) eliminates SRAM copies of network weights, bypassing traditional framework overhead entirely. Evaluated against standard LSTM and GRU deployments, our pipeline demonstrates resilience to sensor jitter on a Processor-in-the-Loop (PiL) Inverted Pendulum benchmark, mathematical parity with full-precision (FP32) PyTorch models (MSE~$<10^{-6}$), lower inference latency, and a reduced SRAM and energy footprint. All pipelines and the C++ inference engine are open-sourced for reproducibility.\footnote{Source code and hardware exporter available at: \url{https://github.com/mrmyms/Omnitrain}}
+Deploying sequence-modeling neural networks on deeply embedded hardware (TinyML) remains challenging due to the strict SRAM constraints of microcontrollers and the temporal jitter inherent to physical sensors. Traditional Recurrent Neural Networks (RNNs) such as LSTM and GRU assume discrete, synchronous time steps and are typically deployed through schema-heavy execution frameworks that incur substantial dynamic memory overhead. We present an end-to-end systems-engineering pipeline for the native, bare-metal deployment of Closed-form Continuous-time (CfC) neural networks on highly constrained hardware (ESP32-S3). A custom Execute-in-Place (XIP) parameter-mapping architecture (\texttt{.omnibit}) eliminates SRAM copies of network weights, bypassing traditional framework overhead entirely. Evaluated against standard LSTM and GRU deployments, our pipeline demonstrates resilience to sensor jitter on a high-speed autonomous racing (F1TENTH) benchmark, achieving mathematical parity with full-precision (FP32) PyTorch models (MSE~$<10^{-6}$), lower inference latency, and a reduced SRAM and energy footprint. All pipelines and the C++ inference engine are open-sourced for reproducibility.\footnote{Source code and hardware exporter available at: \url{https://github.com/mrmyms/Omnitrain}}
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -115,7 +115,7 @@ Experimental evaluations were conducted using an Espressif ESP32-S3 microcontrol
 We replace the conventional CartPole micro-benchmark with a significantly more rigorous task: high-speed autonomous racing using the official F1TENTH Gym environment \cite{okelly2020f1tenth}. F1TENTH introduces complex non-linear vehicle dynamics, including tire friction, slip angles, and severe physical inertia, serving as a robust surrogate for real-world robotics. The primary track utilized is the "Levine" map, a widely adopted baseline in autonomous racing literature. The neural policies map physical states (vehicle linear velocity) and a 24-ray downsampled simulated LiDAR scan directly to steering and speed commands. We generated a large-scale dataset of 50,000 samples by deploying a Pure Pursuit expert controller, deliberately injecting stochastic noise into the expert's steering to induce recovery maneuvers (DAgger-style data augmentation). Models are trained to mimic the expert using 100-step historical sequences, emphasizing the capture of deep temporal dependencies inherent in the vehicle's momentum.
 
 \subsection{Baselines and Training Protocol}
-Baselines are a Time-Aware LSTM (4{,}120 params) and Time-Aware GRU (3{,}980 params), both receiving $\Delta t$ concatenated to $I(t)$ to mitigate temporal misalignment; our CfC has 4{,}050 params. All models share $d_{in}=5$, $d_{model}=32$, $d_{out}=1$, and the CfC backbone uses $d_{backbone}=64$. Baselines are deployed via TFLite Micro \cite{david2021tflitemicro}. Training used PyTorch with AdamW \cite{kingma2014adam,loshchilov2019adamw} (learning rate $10^{-3}$, batch size 1, 250 epochs, Huber loss) on an NVIDIA RTX~5070 GPU, across 30 random seeds, reporting mean $\pm$ standard deviation of MSE.\footnote{Software stack: PyTorch 2.2.0, CUDA 12.1, NumPy 1.24.3, Arduino ESP32 Core 2.0.11 (PlatformIO \texttt{espressif32}). A Docker container is provided in the repository to guarantee bit-exact reproducibility of the \texttt{.omnibit} payload across host operating systems.}
+Baselines are a Time-Aware LSTM (4{,}120 params) and Time-Aware GRU (3{,}980 params), both receiving $\Delta t$ concatenated to $I(t)$ to mitigate temporal misalignment; our CfC has 4{,}050 params. All models share $d_{in}=25$ (1 linear velocity + 24 downsampled LiDAR rays), $d_{model}=32$, $d_{out}=2$ (steering angle and target speed), and the CfC backbone uses $d_{backbone}=64$. Baselines are deployed via TFLite Micro \cite{david2021tflitemicro}. Training used PyTorch with AdamW \cite{kingma2014adam,loshchilov2019adamw} (learning rate $10^{-3}$, batch size 1, 200 epochs, Huber loss) on an NVIDIA RTX~5070 GPU. We report the performance of the most rigorously trained configuration under our 10,000-step lethal stress validation.\footnote{Software stack: PyTorch 2.2.0, CUDA 12.1, NumPy 1.24.3, Arduino ESP32 Core 2.0.11 (PlatformIO \texttt{espressif32}). A Docker container is provided in the repository to guarantee bit-exact reproducibility of the \texttt{.omnibit} payload across host operating systems.}
 
 \section{Results and Evaluation}
 \subsection{Temporal Resilience under Lethal LiDAR Stress}
@@ -124,7 +124,7 @@ The primary task metric is Time-to-Failure (TTF), strictly defined as the durati
 \begin{figure}[t]
 \centering
 \includegraphics[width=\linewidth]{data/temporal_resilience_chart.png}
-\caption{Evaluation under simulated packet loss (temporal jitter). (a) Predictive MSE, a secondary diagnostic. (b) Mean Time-to-Failure (TTF), the primary metric: the CfC intrinsically interpolates missing physical states and prolongs stable control, while discrete RNN baselines fail catastrophically. Shaded regions denote $\pm1\sigma$ across 30 seeds.}
+\caption{Evaluation under simulated packet loss (temporal jitter). (a) Predictive MSE, a secondary diagnostic. (b) Mean Time-to-Failure (TTF), the primary metric: the CfC intrinsically interpolates missing physical states and prolongs stable control, while discrete RNN baselines fail catastrophically and collide with the track walls.}
 \label{fig:ttf}
 \end{figure}
 
@@ -136,7 +136,7 @@ To evaluate execution performance under realistic embedded conditions, a Hardwar
 \begin{figure}[t]
 \centering
 \includegraphics[width=\linewidth]{data/timeseries_comparison.png}
-\caption{Qualitative comparison under 60\% packet loss. The discrete LSTM output diverges from the target force due to step misalignment, while the continuous-time CfC remains smooth and closely tracks ground truth.}
+\caption{Qualitative comparison under 60\% packet loss. The discrete LSTM output diverges from the target steering due to step misalignment, while the continuous-time CfC remains smooth and closely tracks ground truth.}
 \label{fig:timeseries}
 \end{figure}
 
@@ -168,14 +168,12 @@ GRU (Ours XIP) & 6.1 KB & 16.0 KB & 5.90 ms & 62 mW \\
 \subsection{Silicon Parity and the FP32 Advantage}
 Unlike INT8 post-training quantization techniques---which are ubiquitously employed to accommodate stringent SRAM budgets---the proposed XIP architecture permits the CfC mathematical kernel to execute entirely in FP32 on the Xtensa LX7. We hypothesize that quantization compresses the dynamic range requisite for stable continuous-time dynamics; thus, operating in full precision preserves strict mathematical parity between the PyTorch training environment and the embedded microcontroller (MSE~$<10^{-6}$), completely circumventing quantization-induced instability.
 
-\subsection{Generalization to Unmodeled Dynamics}
-To test beyond ideal, linear CartPole kinematics, we evaluated the CfC (trained only on frictionless data) under simulated cart/pole friction ($\mu_{cart}=0.1$, $\mu_{pole}=0.05$), Gaussian sensor noise ($\sigma=0.01$), and 20\% packet loss simultaneously -- a genuine out-of-distribution stress test. The CfC still sustained an average TTF of 206.6 ($\pm$113.8) steps, suggesting its temporal extrapolation ability generalizes beyond idealized kinematics.
 
 \section{Limitations}
 \begin{enumerate}
 \item \textbf{Baseline framework overhead.} We isolated XIP's memory gains from the CfC's mathematical advantage using an LSTM-XIP baseline, but extending native XIP to all discrete RNN variants (e.g., GRU) remains future work.
 \item \textbf{Scalability ceiling.} The ESP32-S3's small D-cache (32/64\,KB) means models beyond $\sim$50{,}000 parameters ($>$200\,KB in FP32) would overflow it, causing cache thrashing and non-linear latency degradation.
-\item \textbf{Task complexity.} Thirty seeds give strong statistical confidence on CartPole, but higher-dimensional benchmarks (e.g., multi-axis drone stabilization) are needed to map the CfC solver's scalability boundary.
+\item \textbf{Task complexity.} While the F1TENTH environment provides rigorous validation of 2D kinematic robustness, testing on 3D aerial robotics (e.g., multi-axis drone stabilization) is needed to map the CfC solver's scalability boundary.
 \item \textbf{Extreme jitter saturation.} As $\Delta t \to \infty$ under prolonged packet loss, the time-gate saturates and the state decays to the learned bias $A$ -- stable, but only a neutral prediction; mapping this saturation boundary is left for safety-critical future work.
 \end{enumerate}
 
@@ -187,6 +185,7 @@ The author thanks the open-source TinyML community and the foundational research
 
 \begin{thebibliography}{25}
 
+\bibitem{okelly2020f1tenth} M. O'Kelly, Z. Zheng, D. Karthik, and R. Mangharam, ``F1TENTH: An open-source evaluation environment for continuous control and reinforcement learning,'' in \textit{Proc. of the Conf. on Machine Learning Research (PMLR)}, 2020, pp. 77--89.
 \bibitem{hasani2022cfc} R. Hasani, M. Lechner, A. Amini, L. Liebenwein, A. Ray, S. Tschaikowski, G. Teschl, and D. Rus, ``Closed-form continuous-time neural networks,'' \textit{Nature Machine Intelligence}, vol. 4, no. 11, pp. 992--1003, 2022.
 
 \bibitem{cai2018proxyless} H. Cai, L. Zhu, and S. Han, ``ProxylessNAS: Direct neural architecture search on target task and hardware,'' \textit{arXiv preprint arXiv:1812.00332}, 2018.
