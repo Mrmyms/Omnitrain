@@ -65,9 +65,36 @@ def evaluate_architecture(n_sensory, n_process, n_header, density, X_tr, Y_tr, d
         
     return val_loss.item(), hidden, active_synapses
 
+def evaluate_worker(args):
+    idx, total, combo, keys, X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, d_in, d_out, device = args
+    config = dict(zip(keys, combo))
+    
+    print(f"\n[Worker] Started [{idx}/{total}] Config: {config}")
+    start_t = time()
+    
+    try:
+        val_mse, total_neurons, active_synapses = evaluate_architecture(
+            config['n_sensory'], config['n_process'], config['n_header'], config['density'],
+            X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, d_in, d_out, device
+        )
+        elapsed = time() - start_t
+        print(f"[Worker] Finished [{idx}/{total}] -> MSE: {val_mse:.4f} | Neurons: {total_neurons} | Synapses: {active_synapses} | Time: {elapsed:.1f}s")
+        
+        return (config['n_sensory'], config['n_process'], config['n_header'], config['density'], total_neurons, active_synapses, val_mse)
+        
+    except Exception as e:
+        print(f"[Worker] Error in config {config}: {e}")
+        return None
+
 def main():
+    import multiprocessing as mp
+    try:
+        mp.set_start_method('spawn', force=True) # Required for CUDA multiprocess
+    except RuntimeError:
+        pass
+        
     device = torch.device("mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu"))
-    print(f"Starting NCP Architecture Search on device: {device}")
+    print(f"Starting MULTI-CORE NCP Architecture Search on device: {device}")
     
     X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, mean_X, std_X = load_dataset()
     X_val = X_val.to(device)
@@ -95,29 +122,24 @@ def main():
     
     print(f"Total architectures to test: {len(combinations)}")
     
+    # Prepare arguments for multiprocessing pool
+    pool_args = []
     for idx, combo in enumerate(combinations):
-        config = dict(zip(keys, combo))
-        print(f"\n[{idx+1}/{len(combinations)}] Testing Config: {config}")
+        pool_args.append((idx + 1, len(combinations), combo, keys, X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, d_in, d_out, device))
         
-        start_t = time()
-        try:
-            val_mse, total_neurons, active_synapses = evaluate_architecture(
-                config['n_sensory'], config['n_process'], config['n_header'], config['density'],
-                X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, d_in, d_out, device
-            )
-            elapsed = time() - start_t
-            print(f"Result -> MSE: {val_mse:.4f} | Neurons: {total_neurons} | Synapses: {active_synapses} | Time: {elapsed:.1f}s")
-            
-            # Save to CSV instantly so progress is not lost
-            with open(results_file, 'a', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow([
-                    config['n_sensory'], config['n_process'], config['n_header'], config['density'],
-                    total_neurons, active_synapses, val_mse
-                ])
-                
-        except Exception as e:
-            print(f"Error evaluating config {config}: {e}")
+    # Use 4 parallel workers (GPUs can multiplex multiple small training runs easily)
+    num_workers = min(4, mp.cpu_count())
+    print(f"Launching {num_workers} parallel workers...")
+    
+    with mp.Pool(processes=num_workers) as pool:
+        for result in pool.imap_unordered(evaluate_worker, pool_args):
+            if result is not None:
+                # Save to CSV instantly as results come in
+                with open(results_file, 'a', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(result)
+                    
+    print("Multi-core architecture search completed!")
 
 if __name__ == "__main__":
     main()
