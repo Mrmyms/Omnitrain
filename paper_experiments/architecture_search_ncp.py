@@ -14,7 +14,18 @@ from omnitrain.sparse_cfc import SparseCfC
 
 from train_f110_ncp import load_dataset, create_advanced_layered_mask
 
-def evaluate_architecture_worker(config, X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, d_in, d_out, device_name, results_file):
+# Global dataset variables for workers to prevent IPC memory explosion
+X_tr_w, Y_tr_w, dt_tr_w, X_val_w, Y_val_w, dt_val_w = None, None, None, None, None, None
+d_in_w, d_out_w = None, None
+
+def init_worker():
+    global X_tr_w, Y_tr_w, dt_tr_w, X_val_w, Y_val_w, dt_val_w, d_in_w, d_out_w
+    # Load dataset directly in the worker to avoid pickling 100GB of RAM across IPC pipes
+    X_tr_w, Y_tr_w, dt_tr_w, X_val_w, Y_val_w, dt_val_w, _, _ = load_dataset()
+    d_in_w = X_tr_w.shape[2]
+    d_out_w = Y_tr_w.shape[2]
+
+def evaluate_architecture_worker(config, device_name, results_file):
     device = torch.device(device_name)
     
     n_sensory = config['n_sensory']
@@ -25,17 +36,17 @@ def evaluate_architecture_worker(config, X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val
     hidden = n_sensory + n_process + n_header
     
     # 1. Create Mask
-    adj_matrix = create_advanced_layered_mask(d_in, n_sensory, n_process, n_header, density=density)
-    total_synapses = hidden * (d_in + hidden)
+    adj_matrix = create_advanced_layered_mask(d_in_w, n_sensory, n_process, n_header, density=density)
+    total_synapses = hidden * (d_in_w + hidden)
     active_synapses = int(adj_matrix.sum().item())
     
     # 2. Instantiate Model
-    model = SparseCfC(input_dim=d_in, hidden_dim=hidden, output_dim=d_out, adjacency_matrix=adj_matrix)
+    model = SparseCfC(input_dim=d_in_w, hidden_dim=hidden, output_dim=d_out_w, adjacency_matrix=adj_matrix)
     model.to(device)
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
     criterion = nn.MSELoss()
-    dataset = TensorDataset(X_tr, Y_tr, dt_tr)
+    dataset = TensorDataset(X_tr_w, Y_tr_w, dt_tr_w)
     
     # We set num_workers=0 because we are already parallelizing the models. 
     # Multiple dataloader threads per model would cause CPU thrashing.
@@ -65,9 +76,9 @@ def evaluate_architecture_worker(config, X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val
     # 4. Evaluate
     model.eval()
     with torch.no_grad():
-        X_val_dev = X_val.to(device)
-        dt_val_dev = dt_val.to(device)
-        Y_val_dev = Y_val.to(device)
+        X_val_dev = X_val_w.to(device)
+        dt_val_dev = dt_val_w.to(device)
+        Y_val_dev = Y_val_w.to(device)
         val_preds = model(X_val_dev, dt_val_dev)
         val_loss = criterion(val_preds, Y_val_dev).item()
         
@@ -95,11 +106,6 @@ def main():
     device_name = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Starting MULTI-CORE NCP Architecture Search. Accelerator: {device_name}")
     
-    X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, mean_X, std_X = load_dataset()
-    
-    d_in = X_tr.shape[2]
-    d_out = Y_tr.shape[2]
-    
     # Define hyperparameter grid
     search_space = {
         'n_sensory': [10, 20, 30, 50],
@@ -112,24 +118,27 @@ def main():
     combinations = list(itertools.product(*[search_space[k] for k in keys]))
     
     results_file = "data/ncp_search_results.csv"
-    with open(results_file, 'w', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow(["n_sensory", "n_process", "n_header", "density", "total_neurons", "active_synapses", "val_mse_epoch30"])
+    
+    # Check if we should append or overwrite (don't overwrite what we already computed!)
+    if not os.path.exists(results_file):
+        with open(results_file, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(["n_sensory", "n_process", "n_header", "density", "total_neurons", "active_synapses", "val_mse_epoch30"])
     
     print(f"Total architectures to test: {len(combinations)}")
     
-    # Prepare arguments for multiprocessing pool
+    # Prepare arguments for multiprocessing pool (Do NOT pass dataset arrays!)
     tasks = []
     for combo in combinations:
         config = dict(zip(keys, combo))
-        tasks.append((config, X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, d_in, d_out, device_name, results_file))
+        tasks.append((config, device_name, results_file))
         
     # Launch Process Pool
-    # We use 4 parallel processes. This heavily utilizes the GPU/CPU without causing Out Of Memory crashes.
+    # We use 4 parallel processes. 
     num_processes = 4 
     print(f"Launching Pool with {num_processes} parallel workers...")
     
-    with mp.Pool(processes=num_processes) as pool:
+    with mp.Pool(processes=num_processes, initializer=init_worker) as pool:
         pool.map(run_worker_task, tasks)
         
     print("Search Complete! Check data/ncp_search_results.csv")
