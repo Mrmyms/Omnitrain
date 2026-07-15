@@ -106,16 +106,19 @@ def main():
     device_name = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Starting MULTI-CORE NCP Architecture Search. Accelerator: {device_name}")
     
-    # Define hyperparameter grid
-    search_space = {
-        'n_sensory': [10, 20, 30, 50],
-        'n_process': [10, 30, 60, 100],
-        'n_header': [5, 10, 20, 50],
-        'density': [0.1, 0.25, 0.5]
-    }
+    # Test the user-defined optimal baseline
+    base_architectures = [
+        (25, 15, 15),   # 55 neurons
+    ]
     
-    keys = list(search_space.keys())
-    combinations = list(itertools.product(*[search_space[k] for k in keys]))
+    densities = [0.1, 0.25, 0.5]
+    
+    combinations = []
+    for arch in base_architectures:
+        for d in densities:
+            combinations.append((arch[0], arch[1], arch[2], d))
+            
+    keys = ['n_sensory', 'n_process', 'n_header', 'density']
     
     results_file = "data/ncp_search_results.csv"
     

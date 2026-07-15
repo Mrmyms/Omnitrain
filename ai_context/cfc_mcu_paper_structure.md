@@ -53,6 +53,8 @@ Based on an extensive review of recent literature spanning Liquid Neural Network
 *   **Section 6.2 (Memory Footprint):** Bar chart comparing SRAM usage. TFLite Micro (Tensor Arena allocation) vs OmniEngine (Static single-buffer allocation).
 *   **Section 6.3 (Inference Latency):** Microseconds per step. OmniEngine C++ loop vs TFLite `Invoke()`.
 *   **Section 6.4 (Silicon Parity):** Emphasize that the MCU C++ output matched the PyTorch FP32 output perfectly ($MSE = 0.00$), proving the custom engine doesn't sacrifice precision.
+*   **Section 6.5 (The Information Bottleneck Effect):** Present empirical findings on sensory layer scaling. Detail how setting the number of sensory neurons equal to the physical input dimensions ($N_{sensory} = N_{inputs}$) significantly degrades performance (e.g., MSE increases by ~39.5%). Explain that restricting sensory neurons (e.g., 20 neurons for 25 inputs) acts as an auto-encoder bottleneck, forcing the network to extract latent geometric features rather than passing raw sensor noise.
+*   **Section 6.6 (Diminishing Returns in Hardware Scaling):** Detail the scaling limits for TinyML. Present the variance and improvement factors: scaling from 40 to 100 neurons yields a measurable improvement ($\sim 1.25 \times 10^{-4}$ MSE reduction per neuron), but scaling further to 200 neurons collapses the improvement factor by an order of magnitude. Conclude that the "Sweet Spot" for MCU deployment is heavily capped around 50-100 neurons (e.g. 50-25-25 with 25% sparsity), ensuring maximum accuracy without exhausting SRAM or battery.
 
 ## 7. Conclusion & Future Work
 *   **Goal:** Wrap up and look forward.
