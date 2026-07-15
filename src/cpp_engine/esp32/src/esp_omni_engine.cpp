@@ -16,6 +16,15 @@ bool ESPOmniEngine::Load(const unsigned char* omnibit_data, size_t length) {
     }
 
     architecture_type_ = omnibit_data[5];
+    if (architecture_type_ == 4) {
+        is_loaded = ncp_engine_.Load(omnibit_data, length);
+        if (is_loaded) {
+            input_dim_ = ncp_engine_.GetInputDim();
+            d_model_ = ncp_engine_.GetModelDim();
+            output_dim_ = ncp_engine_.GetOutputDim();
+        }
+        return is_loaded;
+    }
 
     // 2. Read metadata (24 bytes total: dims[5] + num_tensors)
     uint32_t dims[6];
@@ -127,6 +136,10 @@ void ESPOmniEngine::matmul(const float* W, const float* b, const float* x, float
 std::vector<float> ESPOmniEngine::Step(const float* sensors, float dt, float abs_time) {
     if (!is_loaded) {
         return std::vector<float>(output_dim_, 0.0f);
+    }
+    
+    if (architecture_type_ == 4) {
+        return ncp_engine_.Step(sensors, dt, abs_time);
     }
     
     std::memset(latents_, 0, d_model_ * sizeof(float));

@@ -29,6 +29,29 @@ class ESP32Exporter:
             flat = t.detach().cpu().numpy().flatten().tolist()
             tensor_registry.append((name, len(flat), flat))
 
+        def push_csr_tensor(name, weight_tensor, mask_tensor):
+            w = (weight_tensor * mask_tensor).detach().cpu().numpy()
+            m = mask_tensor.detach().cpu().numpy()
+            values = []
+            col_indices = []
+            # We store row_ptrs and col_indices as floats using struct unpacking 
+            # so they fit in the same float32 array used by the binary format.
+            # In C++, we will reinterpret_cast them back to uint32_t.
+            row_ptrs = [struct.unpack('f', struct.pack('I', 0))[0]]
+            
+            for row in range(w.shape[0]):
+                for col in range(w.shape[1]):
+                    if m[row, col] > 0.5:
+                        values.append(float(w[row, col]))
+                        col_float = struct.unpack('f', struct.pack('I', col))[0]
+                        col_indices.append(col_float)
+                row_float = struct.unpack('f', struct.pack('I', len(values)))[0]
+                row_ptrs.append(row_float)
+                
+            tensor_registry.append((f"{name}_val", len(values), values))
+            tensor_registry.append((f"{name}_col", len(col_indices), col_indices))
+            tensor_registry.append((f"{name}_row", len(row_ptrs), row_ptrs))
+
         # 1. Input Projector
         if hasattr(model, 'input_projector'):
             proj = model.input_projector.default_proj
@@ -121,7 +144,7 @@ class ESP32Exporter:
             else:
                 # Legacy BioLiquidCell
                 extract_cell('legacy_', brain)
-        elif type(model).__name__ == 'ContinuousCfCFull':
+        elif type(model).__name__ in ['ContinuousCfCFull', 'ContinuousCfC']:
             arch_flag = 3
             push_tensor('cfc_bb_w', model.backbone[0].weight)
             push_tensor('cfc_bb_b', model.backbone[0].bias)
@@ -133,6 +156,20 @@ class ESP32Exporter:
             push_tensor('cfc_h_b', model.h_head.bias)
             
             # Export FC layer as the sole head
+            if hasattr(model, 'fc'):
+                push_tensor('fc_w', model.fc.weight)
+                push_tensor('fc_b', model.fc.bias)
+        elif type(model).__name__ == 'SparseCfC':
+            arch_flag = 4
+            push_csr_tensor('cfc_bb_w', model.backbone_weight, model.mask)
+            push_tensor('cfc_bb_b', model.backbone_bias)
+            push_tensor('cfc_f_w', model.f_weight)
+            push_tensor('cfc_f_b', model.f_bias)
+            push_tensor('cfc_g_w', model.g_weight)
+            push_tensor('cfc_g_b', model.g_bias)
+            push_tensor('cfc_h_w', model.h_weight)
+            push_tensor('cfc_h_b', model.h_bias)
+            
             if hasattr(model, 'fc'):
                 push_tensor('fc_w', model.fc.weight)
                 push_tensor('fc_b', model.fc.bias)

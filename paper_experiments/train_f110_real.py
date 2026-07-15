@@ -44,6 +44,7 @@ def train_model(model, X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, epochs=200, is_c
     model.to(device)
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
     criterion = nn.MSELoss()
     dataset = TensorDataset(X_tr, Y_tr, dt_tr)
     loader = DataLoader(dataset, batch_size=256, shuffle=True, num_workers=4, pin_memory=True)
@@ -66,6 +67,8 @@ def train_model(model, X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, epochs=200, is_c
             loss = criterion(preds, by)
             loss.backward()
             optimizer.step()
+        
+        scheduler.step()
             
         if (ep+1) % 10 == 0:
             model.eval()
@@ -80,7 +83,7 @@ def train_model(model, X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, epochs=200, is_c
             
 def run_training_worker(model_name, model, X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, is_cfc):
     print(f"\n--- Training {model_name} ---")
-    train_model(model, X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, epochs=200, is_cfc=is_cfc)
+    train_model(model, X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, epochs=400, is_cfc=is_cfc)
     
     # Save after training
     save_path = f"data/f110_real_{model_name.lower()}.pt"

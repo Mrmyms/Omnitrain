@@ -10,23 +10,28 @@ import os
 sys.path.append(os.path.abspath('f1tenth_gym_repo/examples'))
 from train_and_compare import ContinuousCfC, DiscreteRNN
 
+# Add src to path so we can import omnitrain
+sys.path.append(os.path.abspath('../src'))
+from omnitrain.sparse_cfc import SparseCfC
+
 def evaluate_models():
-    # Load dataset stats for normalization
     stats = np.load("data/f110_real_stats.npz")
     mean_X = stats["mean"]
     std_X = stats["std"]
     
-    d_in = 25 # (1 speed + 24 lidar rays)
+    d_in = 25 
     d_out = 2
     hidden = 32
+    
+    # Initialize with dummy mask; load_state_dict will override it with the actual mask
+    dummy_adj = torch.ones(hidden, d_in + hidden)
+    ncp = SparseCfC(input_dim=d_in, hidden_dim=hidden, output_dim=d_out, adjacency_matrix=dummy_adj)
+    ncp.load_state_dict(torch.load("data/f110_real_ncp.pt"))
+    ncp.eval()
     
     cfc = ContinuousCfC(input_dim=d_in, hidden_dim=hidden, output_dim=d_out, backbone_units=64)
     cfc.load_state_dict(torch.load("data/f110_real_cfc.pt"))
     cfc.eval()
-    
-    lstm = DiscreteRNN(d_in + 1, hidden, d_out, rnn_type='lstm')
-    lstm.load_state_dict(torch.load("data/f110_real_lstm.pt"))
-    lstm.eval()
     
     map_path = "data/maps/example_map"
     with open('f1tenth_gym_repo/examples/config_example_map.yaml') as file:
@@ -35,10 +40,9 @@ def evaluate_models():
     
     env = gym.make('f110_gym:f110-v0', map=map_path, map_ext='.png', num_agents=1)
     
-    for model_name, model in [("CfC", cfc), ("LSTM", lstm)]:
+    for model_name, model in [("SparseNCP", ncp), ("DenseCfC", cfc)]:
         obs, _, done, _ = env.reset(np.array([[conf.sx, conf.sy, conf.stheta]]))
         
-        # Maintain sliding windows of max 100 steps
         obs_window = []
         dt_window = []
             
@@ -47,15 +51,15 @@ def evaluate_models():
         
         blackout = 0
         
-        print(f"\nEvaluating {model_name} on Real F1TENTH Gym with Lethal Jitter...")
+        print(f"\nEvaluating {model_name} on Real F1TENTH Gym with Sensor Noise...")
         while steps < ttf:
             raw_lidar = obs['scans'][0]
             downsampled_lidar = raw_lidar[::len(raw_lidar)//24][:24]
             state = obs['linear_vels_x'][0]
             
-            # Temporarily disabled blackout for baseline test
-            if False:
-                pass
+            # Injecting LiDAR blackouts to test Connectome robustenss!
+            if steps > 0 and steps % 500 == 0:
+                blackout = 30 # 1.5 seconds of blindness
                 
             if blackout > 0:
                 downsampled_lidar = np.zeros_like(downsampled_lidar)
@@ -75,13 +79,9 @@ def evaluate_models():
             dt_tensor = torch.tensor(np.array(dt_window), dtype=torch.float32).unsqueeze(0)
             
             with torch.no_grad():
-                if model_name == "CfC":
-                    out = model(x_tensor, dt_tensor)
-                else:
-                    x_dt = torch.cat([x_tensor, dt_tensor], dim=-1)
-                    out = model(x_dt) 
+                out = model(x_tensor, dt_tensor)
             
-            action = out[0, -1] # Take the prediction for the current (last) step
+            action = out[0, -1]
             
             steer = action[0].item()
             speed = action[1].item()

@@ -111,9 +111,13 @@ def generate_dataset(samples=10000):
         lidar_scans.append(downsampled_lidar)
         actions.append(np.array([steer, speed]))
         
+        # Robust DAgger-lite noise injection
+        # 5% chance of a severe disruption to force recovery behaviors
         if np.random.rand() < 0.05:
-            steer += np.random.normal(0, 0.2)
-            
+            steer += np.random.normal(0, 0.4)
+        
+        # Continuous minor noise
+        steer += np.random.normal(0, 0.05)
         obs, step_reward, done, info = env.step(np.array([[steer, speed]]))
         steps += 1
         
@@ -127,7 +131,7 @@ def generate_dataset(samples=10000):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--samples", type=int, default=20000)
+    parser.add_argument("--samples", type=int, default=50000)
     args = parser.parse_args()
     
     print("Generating REAL F1TENTH imitation learning dataset...")

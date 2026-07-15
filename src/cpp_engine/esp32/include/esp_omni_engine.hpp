@@ -1,6 +1,8 @@
 #ifndef ESP_OMNI_ENGINE_HPP
 #define ESP_OMNI_ENGINE_HPP
 
+#include "OmniEngineNCP.hpp"
+
 #include <vector>
 #include <cstdint>
 #include <cmath>
@@ -24,6 +26,7 @@ public:
 
 private:
     bool is_loaded;
+    OmniEngineNCP ncp_engine_;
     
     // Dimensions
     uint32_t input_dim_;
