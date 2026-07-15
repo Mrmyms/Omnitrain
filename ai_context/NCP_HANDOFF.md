@@ -18,10 +18,20 @@ The user has switched to a PC with a powerful GPU (RTX 5070) to train the advanc
 3. **Run Evaluation**: After training, execute `evaluate_f110_ncp.py` to test the network's robustness in the F1TENTH gym environment with simulated LiDAR blackouts. The goal is to survive 10,000 steps without crashing.
 4. **Deploy to Hardware**: If the evaluation is successful, assist the user in flashing the `.omnibit` payload to their ESP32-S3 via PlatformIO (`hil_test`).
 
-## Architecture Details
-- **Input**: 25 physical inputs (24 LiDAR rays, 1 Speed)
-- **Sensory Layer**: 50 Neurons (Receive from input)
-- **Process Layer**: 100 Neurons (Recurrent, receive from Sensory)
-- **Header/Command Layer**: 50 Neurons (Recurrent, receive from Process, output to motor)
-- **Motor Output**: 2 values (Steer, Throttle)
-- **Total Hidden**: 200. Perfectly fits within `OMNI_MAX_DIM = 256` limit on ESP32.
+## Architecture Details & Breakthroughs (Updated)
+El agente en la Mac ha completado búsquedas arquitectónicas masivas y descubrió dos topologías ganadoras que deben ser entrenadas a fondo (400 épocas) en la RTX 5070:
+
+1. **El Modelo Minimalista (Linear 20-10-10):**
+   - Sensorial: 20 | Proceso: 10 | Comando: 10 (Total 40 neuronas).
+   - Sparsity: 25% densidad.
+   - Demostró un poderoso efecto de *Information Bottleneck*, forzando a la red a aprender representaciones latentes en lugar de memorizar. Es ideal si se busca máxima eficiencia en el ESP32.
+
+2. **El Modelo Volumétrico (3D Array Cube 5x5x4):**
+   - Arreglo espacial 3D de 100 neuronas (5 ancho x 5 alto x 4 profundidad).
+   - Conexiones restringidas a vecinos espaciales (L1 dist <= 2).
+   - Logró precisión casi perfecta (`0.038` MSE) usando 42% menos sinapsis que un modelo lineal equivalente, podando inteligentemente las conexiones inútiles.
+
+**Siguientes Pasos Reales:**
+1. Mover el código a la PC con RTX 5070 y correr un entrenamiento completo (400 épocas) de uno o ambos modelos ganadores en `train_f110_ncp.py`.
+2. Correr pruebas de Robustez (Time-Jittering o LiDAR Dropout) para ver qué modelo resiste mejor al ruido.
+3. Exportar el ganador a `.omnibit` y flashearlo al ESP32-S3.
