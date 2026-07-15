@@ -12,8 +12,9 @@ The user has switched to a PC with a powerful GPU (RTX 5070) to train the advanc
 - **Training Script (`paper_experiments/train_f110_ncp.py`)**: Script ready to train a 200-neuron (50 Sensory -> 100 Process -> 50 Header) architecture on the F1TENTH DAgger dataset.
 
 ### 2. Immediate Next Steps for you (The Agent)
-1. **Run the Training**: The user wants to train the model. Execute `train_f110_ncp.py` using their local Python virtual environment. It will train the 200-neuron model for 400 epochs on the RTX 5070.
-2. **Verify Export**: Ensure `train_f110_ncp.py` outputs the `f110_real_ncp.omnibit` file successfully.
+1. **Run the Architecture Search**: Before full training, the user wants to find the Pareto-optimal architecture. Execute `paper_experiments/architecture_search_ncp.py`. It will test 192 configurations for 30 epochs each and output `data/ncp_search_results.csv`.
+2. **Train the Winner**: Analyze the CSV to find the configuration with the lowest MSE and smallest footprint. Update `train_f110_ncp.py` with these winning hyperparameters and run it for 400 epochs on the RTX 5070.
+3. **Verify Export**: Ensure `train_f110_ncp.py` outputs the `f110_real_ncp.omnibit` file successfully.
 3. **Run Evaluation**: After training, execute `evaluate_f110_ncp.py` to test the network's robustness in the F1TENTH gym environment with simulated LiDAR blackouts. The goal is to survive 10,000 steps without crashing.
 4. **Deploy to Hardware**: If the evaluation is successful, assist the user in flashing the `.omnibit` payload to their ESP32-S3 via PlatformIO (`hil_test`).
 
