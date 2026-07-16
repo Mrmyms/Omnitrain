@@ -131,6 +131,8 @@ def create_3d_array_mask(input_dim=25, grid_x=5, grid_y=5, grid_z=4, density=0.2
                     if np.random.rand() < density:
                         mask[j, c_sen + i] = True
                         
+    return mask.float()
+
 def create_3d_pyramid_mask(input_dim=25, density=0.25):
     """3D Pyramid topology: 5x5 -> 4x4 -> 3x3 -> 2x2 -> 1x1 (Total 55 neurons)"""
     hidden_dim = 55
