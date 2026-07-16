@@ -13,7 +13,7 @@ from omnitrain.esp32_exporter import ESP32Exporter
 
 # Import generators from our previous scripts
 from train_f110_ncp import load_dataset, create_advanced_layered_mask
-from topology_search_ncp import create_3d_array_mask
+from topology_search_ncp import create_3d_array_mask, create_reflex_arc_mask
 
 def train_final_model(model, X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, epochs=400, n_sensory=25, n_process=50):
     device = torch.device("mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu"))
@@ -109,27 +109,52 @@ if __name__ == "__main__":
     # 2. 3D ARRAY CUBE (100 Neurons: 5x5x4)
     # ==========================================
     print("\n" + "="*50)
-    print("🥊 CONTENDER 2: 3D ARRAY CUBE (5x5x4)")
+    print("🥊 CONTENDER 2: 3D ARRAY CUBE (5x5x4) [ALREADY COMPLETED]")
     print("="*50)
     
-    grid_x, grid_y, grid_z = 5, 5, 4
-    hidden_C = grid_x * grid_y * grid_z # 100
+    # grid_x, grid_y, grid_z = 5, 5, 4
+    # hidden_C = grid_x * grid_y * grid_z # 100
     
-    adj_cube = create_3d_array_mask(d_in, grid_x, grid_y, grid_z, density=density)
-    model_cube = SparseCfC(input_dim=d_in, hidden_dim=hidden_C, output_dim=d_out, adjacency_matrix=adj_cube)
+    # adj_cube = create_3d_array_mask(d_in, grid_x, grid_y, grid_z, density=density)
+    # model_cube = SparseCfC(input_dim=d_in, hidden_dim=hidden_C, output_dim=d_out, adjacency_matrix=adj_cube)
     
-    print(f"Cube Synapses: {int(adj_cube.sum().item())}")
-    # For the cube, the first 25 are purely sensory, and the last 25 are header (output capable)
-    n_sen_C = 25
-    n_pro_C = hidden_C - 25 - 25
+    # print(f"Cube Synapses: {int(adj_cube.sum().item())}")
+    # # For the cube, the first 25 are purely sensory, and the last 25 are header (output capable)
+    # n_sen_C = 25
+    # n_pro_C = hidden_C - 25 - 25
     
-    model_cube = train_final_model(model_cube, X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, epochs=400, 
-                                     n_sensory=n_sen_C, n_process=n_pro_C)
+    # model_cube = train_final_model(model_cube, X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, epochs=400, 
+    #                                  n_sensory=n_sen_C, n_process=n_pro_C)
+                                     
+    # # Save Model
+    # torch.save(model_cube.state_dict(), "data/f110_cube_100.pt")
+    # # Export to Omnibit
+    # exporter.export(model_cube, input_dim=d_in, d_model=hidden_C, output_dim=d_out, filename="f110_cube_100.omnibit")
+    # print("✅ f110_cube_100.omnibit exported successfully!")
+    
+    # ==========================================
+    # 3. REFLEX ARC (100 Neurons: 50-25-25)
+    # ==========================================
+    print("\n" + "="*50)
+    print("🥊 CONTENDER 3: REFLEX ARC (50-25-25)")
+    print("="*50)
+    
+    n_sen_R = 50
+    n_pro_R = 25
+    n_hdr_R = 25
+    hidden_R = n_sen_R + n_pro_R + n_hdr_R
+    
+    adj_reflex = create_reflex_arc_mask(d_in, n_sen_R, n_pro_R, n_hdr_R, density=density)
+    model_reflex = SparseCfC(input_dim=d_in, hidden_dim=hidden_R, output_dim=d_out, adjacency_matrix=adj_reflex)
+    
+    print(f"Reflex Arc Synapses: {int(adj_reflex.sum().item())}")
+    model_reflex = train_final_model(model_reflex, X_tr, Y_tr, dt_tr, X_val, Y_val, dt_val, epochs=400, 
+                                     n_sensory=n_sen_R, n_process=n_pro_R)
                                      
     # Save Model
-    torch.save(model_cube.state_dict(), "data/f110_cube_100.pt")
+    torch.save(model_reflex.state_dict(), "data/f110_reflex_100.pt")
     # Export to Omnibit
-    exporter.export(model_cube, input_dim=d_in, d_model=hidden_C, output_dim=d_out, filename="f110_cube_100.omnibit")
-    print("✅ f110_cube_100.omnibit exported successfully!")
+    exporter.export(model_reflex, input_dim=d_in, d_model=hidden_R, output_dim=d_out, filename="f110_reflex_100.omnibit")
+    print("✅ f110_reflex_100.omnibit exported successfully!")
     
     print("\n🏁 FINAL SHOWDOWN COMPLETE 🏁")
