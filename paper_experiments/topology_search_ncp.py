@@ -176,6 +176,72 @@ def create_3d_pyramid_mask(input_dim=25, density=0.25):
                         
     return mask.float()
 
+def create_reflex_arc_mask(input_dim=25, n_sensory=50, n_process=25, n_header=25, density=0.25):
+    """Reflex Arc Topology: Sensory connects to Process AND directly to Header/Command"""
+    hidden_dim = n_sensory + n_process + n_header
+    mask = torch.zeros(hidden_dim, input_dim + hidden_dim, dtype=torch.bool)
+    
+    c_in = 0
+    c_sen = input_dim
+    c_pro = input_dim + n_sensory
+    c_hdr = input_dim + n_sensory + n_process
+    
+    # Sensory receives from input
+    mask[0:n_sensory, c_in:c_in+input_dim] = torch.rand(n_sensory, input_dim) < density
+    
+    # Process receives from Sensory
+    mask[n_sensory:n_sensory+n_process, c_sen:c_sen+n_sensory] = torch.rand(n_process, n_sensory) < density
+    # Process recurrent
+    mask[n_sensory:n_sensory+n_process, c_pro:c_pro+n_process] = torch.rand(n_process, n_process) < density
+    
+    # Header receives from Process
+    mask[n_sensory+n_process:, c_pro:c_pro+n_process] = torch.rand(n_header, n_process) < density
+    # Header receives from Sensory DIRECTLY (Reflex Arc / Sensory Bypass)
+    mask[n_sensory+n_process:, c_sen:c_sen+n_sensory] = torch.rand(n_header, n_sensory) < (density * 0.5)
+    # Header recurrent
+    mask[n_sensory+n_process:, c_hdr:] = torch.rand(n_header, n_header) < density
+    
+    return mask.float()
+
+def create_small_world_cube_mask(input_dim=25, grid_x=5, grid_y=5, grid_z=4, density=0.25, skip_prob=0.05):
+    """Small-World 3D Cube: Strict local 3D neighborhood + 5% chance of long-distance skip connections"""
+    hidden_dim = grid_x * grid_y * grid_z
+    mask = torch.zeros(hidden_dim, input_dim + hidden_dim, dtype=torch.bool)
+    
+    def get_coords(idx):
+        z = idx // (grid_x * grid_y)
+        rem = idx % (grid_x * grid_y)
+        y = rem // grid_x
+        x = rem % grid_x
+        return x, y, z
+        
+    c_sen = input_dim
+    sensory_count = min(25, grid_x * grid_y)
+    
+    # Input to Z=0 face
+    mask[0:sensory_count, 0:input_dim] = torch.rand(sensory_count, input_dim) < density
+    if grid_x * grid_y > 25:
+         mask[25:grid_x*grid_y, 0:input_dim] = torch.rand(grid_x*grid_y - 25, input_dim) < (density / 2.0)
+    
+    # Internal Grid connections
+    for i in range(hidden_dim):
+        xi, yi, zi = get_coords(i)
+        for j in range(hidden_dim):
+            xj, yj, zj = get_coords(j)
+            
+            # Local distance rule
+            dist = abs(xi - xj) + abs(yi - yj) + abs(zi - zj)
+            is_local = (dist > 0 and dist <= 2 and zj >= zi - 1)
+            
+            # Small-world long-distance bypass rule (Skip connections)
+            is_skip = (np.random.rand() < skip_prob) and (zj >= zi) # Only forward or recurrent skip
+            
+            if is_local or is_skip:
+                if np.random.rand() < density:
+                    mask[j, c_sen + i] = True
+                        
+    return mask.float()
+
 
 # --- WORKER SETUP ---
 
@@ -210,6 +276,20 @@ def evaluate_topology_worker(config, device_name, results_file):
         adj_matrix = create_3d_pyramid_mask(d_in_w, density=density)
         n_sensory = 25
         n_header = 14 # 9 + 4 + 1
+    elif topology_name == "Reflex_Arc":
+        n_sensory = config.get('n_sensory', 50)
+        n_process = config.get('n_process', 25)
+        n_header = config.get('n_header', 25)
+        hidden = n_sensory + n_process + n_header
+        adj_matrix = create_reflex_arc_mask(d_in_w, n_sensory, n_process, n_header, density=density)
+    elif topology_name == "Small_World_Cube":
+        grid_x = config['grid_x']
+        grid_y = config['grid_y']
+        grid_z = config['grid_z']
+        hidden = grid_x * grid_y * grid_z
+        adj_matrix = create_small_world_cube_mask(d_in_w, grid_x, grid_y, grid_z, density=density)
+        n_sensory = 25
+        n_header = 25
         n_process = hidden - n_sensory - n_header
     else:
         # Fallback for baseline (not used in this specific sweep but good for safety)
@@ -281,11 +361,11 @@ def main():
     mp.set_start_method('spawn', force=True)
     
     device_name = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Starting 3D PYRAMID SEARCH. Accelerator: {device_name}")
+    print(f"Starting ADVANCED ARCHITECTURES SEARCH. Accelerator: {device_name}")
     
-    # Run the 3D Pyramid (55 neurons)
     shapes = [
-        {"name": "3D_Pyramid", "grid_x": 0, "grid_y": 0, "grid_z": 0} # dummy grid values, not used
+        {"name": "Reflex_Arc", "grid_x": 0, "grid_y": 0, "grid_z": 0},
+        {"name": "Small_World_Cube", "grid_x": 5, "grid_y": 5, "grid_z": 4}
     ]
     
     results_file = "data/topology_search_results.csv"
@@ -301,7 +381,7 @@ def main():
         }
         tasks.append((config, device_name, results_file))
         
-    num_processes = 1 
+    num_processes = 2 
     print(f"Launching Pool with {num_processes} parallel workers...")
     
     with mp.Pool(processes=num_processes, initializer=init_worker) as pool:
