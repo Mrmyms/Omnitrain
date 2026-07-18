@@ -9,7 +9,8 @@
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)]()
 
 > [!IMPORTANT]
-> **Peer Review Reproducibility:** If you are reviewing the paper *"Efficient Closed-Form Continuous-Time Neural Networks on Commodity Microcontrollers"*, the exact code, datasets, and scripts to reproduce the experiments are located in the **[`paper_experiments/`](./paper_experiments/)** directory. A `Dockerfile` is also provided in the root directory to guarantee bit-exact reproducibility across host operating systems.
+> **Peer Review Reproducibility:** If you are reviewing the paper *"Efficient Closed-Form Continuous-Time Neural Networks on Commodity Microcontrollers"*, the exact code, datasets, and scripts to reproduce the experiments are located in the **[`paper_experiments/`](./paper_experiments/)** directory. We have carefully organized this folder into `training/`, `evaluation/`, and `hardware_in_the_loop/` scripts. A `Dockerfile` is also provided in the root directory to guarantee bit-exact reproducibility across host operating systems.
+> All paper drafts, PDFs, and LaTeX sources have been consolidated in the **[`manuscript/`](./manuscript/)** directory.
 
 > [!NOTE]
 > **Research Status:** OmniTrain is an active research framework designed for high-frequency, safety-critical robotics. It bridges the gap between biological neural efficiency and formal mathematical safety constraints.

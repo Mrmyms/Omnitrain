@@ -3,107 +3,92 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include "esp_omni_engine.hpp"
+#include "model.h"
+#include "USB.h"
 
 // Architecture selection
 #define USE_CFC
 
 ESPOmniEngine engine;
-Adafruit_MPU6050 mpu;
 
-// Motor PWM config
-const int MOTOR_PWM_PIN = 18;
-const int MOTOR_DIR_PIN = 19;
-const int PWM_FREQ = 5000;
-const int PWM_RES = 8;
-const int PWM_CHANNEL = 0;
-
-float state_vector[4] = {0.0f, 0.0f, 0.0f, 0.0f}; // [pos, vel, angle, ang_vel]
 unsigned long last_time = 0;
 
-// Dummy pointer for the .omnibit payload mapped via XIP (DROM)
-extern const unsigned char payload_omnibit[];
-extern const size_t payload_omnibit_len;
-
 void setup() {
+    USB.begin();
     Serial.begin(115200);
-    Wire.begin(21, 22); // I2C pins for ESP32
-
-    if (!mpu.begin()) {
-        Serial.println("ERR: Failed to find MPU6050 chip");
-        while (1) { delay(10); }
+    unsigned long start_serial = millis();
+    while(!Serial && millis() - start_serial < 2000) {
+        delay(10);
     }
     
-    mpu.setAccelerometerRange(MPU6050_RANGE_2_G);
-    mpu.setGyroRange(MPU6050_RANGE_250_DEG);
-    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
-
-    // Setup PWM for motor
-    ledcSetup(PWM_CHANNEL, PWM_FREQ, PWM_RES);
-    ledcAttachPin(MOTOR_PWM_PIN, PWM_CHANNEL);
-    pinMode(MOTOR_DIR_PIN, OUTPUT);
-
-    // Load payload from Flash (ROM)
-    if (!engine.Load(payload_omnibit, payload_omnibit_len)) {
+    Serial.println("ESP32: Booting OmniTrain HIL (Dynamic I/O)...");
+    if (!engine.Load(model_omnibit, model_omnibit_len)) {
         Serial.println("ERR: Failed to load OmniEngine payload.");
-        while(1);
+        unsigned long err_timer = 0;
+        while(1) {
+            if (millis() - err_timer > 1000) {
+                Serial.println("ERR: Stuck in Load fail loop");
+                err_timer = millis();
+            }
+        }
     }
-    
+    Serial.println("ESP32: OmniEngine loaded successfully.");
     Serial.println("READY");
     last_time = micros();
 }
 
 void loop() {
+    static unsigned long last_heartbeat = 0;
+    if (millis() - last_heartbeat > 1000) {
+        Serial.println("HEARTBEAT");
+        last_heartbeat = millis();
+    }
+    
     if (Serial.available()) {
         String input = Serial.readStringUntil('\n');
         
-        // Parse simulated CartPole state injected from PC (Hardware-in-the-Loop)
-        // Format: "POS,VEL,ANG,ANG_VEL"
-        int first_comma = input.indexOf(',');
-        int second_comma = input.indexOf(',', first_comma + 1);
-        int third_comma = input.indexOf(',', second_comma + 1);
+        float state_vector[32]; // Max 32 inputs supported for HIL
+        int num_inputs = 0;
+        int start_idx = 0;
         
-        if (first_comma > 0 && second_comma > 0 && third_comma > 0) {
-            state_vector[0] = input.substring(0, first_comma).toFloat();
-            state_vector[1] = input.substring(first_comma + 1, second_comma).toFloat();
-            state_vector[2] = input.substring(second_comma + 1, third_comma).toFloat();
-            state_vector[3] = input.substring(third_comma + 1).toFloat();
-            
-            unsigned long current_time = micros();
-            float dt = (current_time - last_time) / 1000000.0f;
-            last_time = current_time;
-
-            // --- HARDWARE DUMMY LOAD ---
-            // We read the physical I2C MPU6050 here purely to generate physical bus jitter 
-            // and interrupt overhead, as described in the paper methodology.
-            sensors_event_t a, g, temp;
-            mpu.getEvent(&a, &g, &temp);
-            // ---------------------------
-
-            // Normalize states using hardcoded dataset statistics
-            const float x_mean[4] = {0.00042742f, -0.00004877f, -0.00002502f, -0.00010277f};
-            const float x_std[4]  = {0.00894568f,  0.01085484f,  0.00127859f,  0.00267853f};
-            
-            float norm_state[4];
-            for (int i = 0; i < 4; i++) {
-                norm_state[i] = (state_vector[i] - x_mean[i]) / x_std[i];
+        // Parse CSV string into floats
+        for (unsigned int i = 0; i < input.length(); i++) {
+            if (input[i] == ',' || i == input.length() - 1) {
+                int end_idx = (input[i] == ',') ? i : i + 1;
+                state_vector[num_inputs++] = input.substring(start_idx, end_idx).toFloat();
+                start_idx = i + 1;
+                if (num_inputs >= 32) break;
             }
+        }
+        
+        // Reset command hook (if Python sends a single 999.0, clear all memory)
+        if (num_inputs == 1 && state_vector[0] == 999.0f) {
+            engine.Load(model_omnibit, model_omnibit_len); // Reinitialize engine from scratch
+            Serial.print("F:0.0,0.0\n");
+            return;
+        }
 
-            // Evaluate CfC Continuous-Time Model via Execute-in-Place
-            std::vector<float> action = engine.Step(norm_state, dt, current_time / 1000000.0f);
-            float force = action[0];
+        // Only run inference if we received the expected number of inputs + 2 (dt and sim_time)
+        if (num_inputs == engine.GetInputDim() + 2) {
+            // Extract the simulated physics time provided by the Python Gym HIL server
+            float dt = state_vector[num_inputs - 2];
+            float sim_time = state_vector[num_inputs - 1];
+
+            // Evaluate CfC Continuous-Time Model
+            std::vector<float> action = engine.Step(state_vector, dt, sim_time);
             
-            // Actuate physical motor based on computed force
-            if (force > 0) {
-                digitalWrite(MOTOR_DIR_PIN, HIGH);
-            } else {
-                digitalWrite(MOTOR_DIR_PIN, LOW);
-            }
-            int pwm_val = min(255, (int)(abs(force) * 255.0f));
-            ledcWrite(PWM_CHANNEL, pwm_val);
-
-            // Send force back to PC Simulation
+            // Send forces back to PC Simulation
             Serial.print("F:");
-            Serial.println(force, 4);
+            for (size_t i = 0; i < action.size(); i++) {
+                Serial.print(action[i], 4);
+                if (i < action.size() - 1) Serial.print(",");
+            }
+            Serial.println();
+        } else {
+            Serial.print("WARN: Input dim mismatch. Expected ");
+            Serial.print(engine.GetInputDim());
+            Serial.print(", got ");
+            Serial.println(num_inputs);
         }
     }
 }

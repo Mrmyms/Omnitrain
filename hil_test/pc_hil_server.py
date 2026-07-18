@@ -25,20 +25,23 @@ except ImportError:
 def run_hil_test(port, baudrate, num_samples, loss_prob):
     try:
         ser = serial.Serial(port, baudrate, timeout=2)
+        ser.dtr = True
+        ser.rts = True
         print(f"Connected to ESP32-S3 on {port} at {baudrate} baud.")
     except Exception as e:
         print(f"Failed to connect to Serial port: {e}")
         return
 
-    # Wait for ESP32 to be READY
-    print("Waiting for ESP32 to initialize...")
-    while True:
-        line = ser.readline().decode('utf-8').strip()
-        if "READY" in line:
-            print("ESP32-S3 Ready! Starting HIL Simulation.")
-            break
-        elif line:
-            print(f"[ESP32] {line}")
+    # Wait for ESP32 to be READY (Disabled for native USB compatibility)
+    # print("Waiting for ESP32 to initialize...")
+    # while True:
+    #     line = ser.readline().decode('utf-8').strip()
+    #     if "READY" in line:
+    #         print("ESP32-S3 Ready! Starting HIL Simulation.")
+    #         break
+    #     elif line:
+    #         print(f"[ESP32] {line}")
+    print("Assuming ESP32-S3 is ready on native USB. Starting HIL Simulation.")
 
     gravity = 9.8
     masscart = 1.0
@@ -52,6 +55,7 @@ def run_hil_test(port, baudrate, num_samples, loss_prob):
     
     ttf = 0
     start_time = time.time()
+    force = 0.0
     
     for step in range(num_samples):
         x, x_dot, theta, theta_dot = state
@@ -64,16 +68,23 @@ def run_hil_test(port, baudrate, num_samples, loss_prob):
             # Send state to ESP32-S3
             msg = f"{x:.5f},{x_dot:.5f},{theta:.5f},{theta_dot:.5f}\n"
             ser.write(msg.encode('utf-8'))
-        
-        # Wait for ESP32-S3 to compute force
-        force = 0.0
-        while True:
-            line = ser.readline().decode('utf-8').strip()
-            if line.startswith("F:"):
-                force = float(line[2:])
-                break
-            elif line:
-                print(f"[ESP32] {line}")
+            
+            # Wait for ESP32-S3 to compute force
+            force = 0.0
+            retries = 0
+            while True:
+                line = ser.readline().decode('utf-8').strip()
+                if line.startswith("F:"):
+                    force = float(line[2:])
+                    break
+                elif line:
+                    print(f"[ESP32] {line}")
+                else:
+                    retries += 1
+                    if retries > 2:
+                        print("Resending lost serial packet...")
+                        ser.write(msg.encode('utf-8'))
+                        retries = 0
                 
         force = np.clip(force, -10.0, 10.0)
         
