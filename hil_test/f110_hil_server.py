@@ -4,15 +4,67 @@ import time
 import argparse
 import numpy as np
 
-def run_f110_hil(port, baudrate, num_samples):
+def run_f110_hil(port, baudrate, num_samples, model_path=None, dt=0.05):
     try:
         ser = serial.Serial(port, baudrate, timeout=2)
-        ser.dtr = True
-        ser.rts = True
+        # ESP32 Native USB CDC requires DTR to be false to avoid reset
+        ser.dtr = False
+        ser.rts = False
         print(f"Connected to ESP32-S3 on {port} at {baudrate} baud.")
     except Exception as e:
         print(f"Failed to connect to Serial port: {e}")
         return
+
+    # Wait for ESP32 to boot up
+    time.sleep(2.0)
+    
+    if model_path:
+        print(f"Loading dynamic model from {model_path}...")
+        try:
+            with open(model_path, "rb") as f:
+                payload = f.read()
+            size = len(payload)
+            
+            # Send LOAD command
+            ser.reset_input_buffer()
+            ser.write(f"LOAD:{size}\n".encode('utf-8'))
+            
+            # Wait for ACK
+            ack_found = False
+            for _ in range(10): # retry a few times
+                ack = ser.readline().decode('utf-8', errors='ignore').strip()
+                if ack == f"ACK_LOAD:{size}":
+                    ack_found = True
+                    break
+                elif ack:
+                    print(f"[ESP32] {ack}")
+                    
+            if ack_found:
+                print(f"ESP32 acknowledged load command. Sending {size} bytes...")
+                ser.write(payload)
+                
+                # Wait for OK
+                status_found = False
+                for _ in range(20):
+                    status = ser.readline().decode('utf-8', errors='ignore').strip()
+                    if status == "LOAD_OK":
+                        status_found = True
+                        break
+                    elif status:
+                        print(f"[ESP32] {status}")
+                        
+                if status_found:
+                    print("Model loaded successfully onto ESP32.")
+                else:
+                    print("ERR: Failed to load model or timed out.")
+                    return
+            else:
+                print("ERR: Did not receive ACK from ESP32")
+                return
+                
+        except Exception as e:
+            print(f"ERR: Could not read or send model payload: {e}")
+            return
 
     print("Assuming ESP32-S3 is ready on native USB. Starting F1TENTH HIL Simulation.")
 
@@ -22,13 +74,20 @@ def run_f110_hil(port, baudrate, num_samples):
     input_dim = 25
     
     start_time = time.time()
+    sim_time = 0.0
     
     for step in range(num_samples):
+        # Use fixed physics timestep dt instead of serial latency
+        sim_time += dt
+
         # Generate random dummy state (normalized)
         state = np.random.uniform(low=-1.0, high=1.0, size=(input_dim,))
         
-        # Format as CSV
-        msg = ",".join([f"{x:.4f}" for x in state]) + "\n"
+        # Format as CSV and append dt and sim_time
+        msg_parts = [f"{x:.4f}" for x in state]
+        msg_parts.append(f"{dt:.5f}")
+        msg_parts.append(f"{sim_time:.5f}")
+        msg = ",".join(msg_parts) + "\n"
         
         t0 = time.time()
         ser.write(msg.encode('utf-8'))
@@ -78,6 +137,8 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=str, default="/dev/cu.usbmodem101", help="Serial port")
     parser.add_argument("--baud", type=int, default=115200, help="Baud rate")
     parser.add_argument("--samples", type=int, default=1000, help="Number of inferences to test")
+    parser.add_argument("--model", type=str, default=None, help="Path to .omnibit file to load dynamically")
+    parser.add_argument("--dt", type=float, default=0.05, help="Simulated physics timestep (e.g. 0.05 for 20Hz LiDAR)")
     args = parser.parse_args()
     
-    run_f110_hil(args.port, args.baud, args.samples)
+    run_f110_hil(args.port, args.baud, args.samples, args.model, args.dt)

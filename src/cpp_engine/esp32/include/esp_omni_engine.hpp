@@ -2,6 +2,7 @@
 #define ESP_OMNI_ENGINE_HPP
 
 #include "OmniEngineNCP.hpp"
+#include "OmniEngineMixed.hpp"
 
 #include <vector>
 #include <cstdint>
@@ -27,6 +28,7 @@ public:
 private:
     bool is_loaded;
     OmniEngineNCP ncp_engine_;
+    OmniEngineMixed mixed_engine_;
     
     // Dimensions
     uint32_t input_dim_;

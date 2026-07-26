@@ -1,0 +1,114 @@
+[
+  {
+    "generation": 1,
+    "best_fitness": 4388.588378906249,
+    "best_distance": 4409.999999999999,
+    "best_memory": 43851.0,
+    "best_genotype": [
+      0,
+      3,
+      0,
+      3
+    ],
+    "mean_fitness": 3401.180763862212,
+    "time_seconds": 3.4957969188690186
+  },
+  {
+    "generation": 2,
+    "best_fitness": 4388.588378906249,
+    "best_distance": 4409.999999999999,
+    "best_memory": 43851.0,
+    "best_genotype": [
+      0,
+      3,
+      0,
+      3
+    ],
+    "mean_fitness": 4150.63613611013,
+    "time_seconds": 2.4542977809906006
+  },
+  {
+    "generation": 3,
+    "best_fitness": 4388.827202775282,
+    "best_distance": 4410.386773087782,
+    "best_memory": 44154.0,
+    "best_genotype": [
+      0,
+      3,
+      2,
+      3
+    ],
+    "mean_fitness": 4195.698979002568,
+    "time_seconds": 2.321589946746826
+  },
+  {
+    "generation": 4,
+    "best_fitness": 4388.827202775282,
+    "best_distance": 4410.386773087782,
+    "best_memory": 44154.0,
+    "best_genotype": [
+      0,
+      3,
+      2,
+      3
+    ],
+    "mean_fitness": 4066.057537427419,
+    "time_seconds": 2.447504997253418
+  },
+  {
+    "generation": 5,
+    "best_fitness": 4388.827202775282,
+    "best_distance": 4410.386773087782,
+    "best_memory": 44154.0,
+    "best_genotype": [
+      0,
+      3,
+      2,
+      3
+    ],
+    "mean_fitness": 4354.686935834688,
+    "time_seconds": 1.9821841716766357
+  },
+  {
+    "generation": 6,
+    "best_fitness": 4388.827202775282,
+    "best_distance": 4410.386773087782,
+    "best_memory": 44154.0,
+    "best_genotype": [
+      0,
+      3,
+      2,
+      3
+    ],
+    "mean_fitness": 4117.911142014225,
+    "time_seconds": 2.294771909713745
+  },
+  {
+    "generation": 7,
+    "best_fitness": 4388.827202775282,
+    "best_distance": 4410.386773087782,
+    "best_memory": 44154.0,
+    "best_genotype": [
+      0,
+      3,
+      2,
+      3
+    ],
+    "mean_fitness": 4311.92410738764,
+    "time_seconds": 1.9011847972869873
+  },
+  {
+    "generation": 8,
+    "best_fitness": 4388.827202775282,
+    "best_distance": 4410.386773087782,
+    "best_memory": 44154.0,
+    "best_genotype": [
+      0,
+      3,
+      2,
+      3
+    ],
+    "mean_fitness": 4267.088910815094,
+    "time_seconds": 2.241715908050537
+  }
+]

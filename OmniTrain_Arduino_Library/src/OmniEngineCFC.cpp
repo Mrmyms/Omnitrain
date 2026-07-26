@@ -1,11 +1,12 @@
-#include "esp_omni_engine.hpp"
+#include "OmniEngineCFC.hpp"
 #include <cstring>
+#include <iostream>
 #include <algorithm>
 
 // Force maximum GCC optimizations for the whole file
 #pragma GCC optimize ("O3")
 
-bool ESPOmniEngine::Load(const unsigned char* omnibit_data, size_t length) {
+bool OmniEngineCFC::Load(const unsigned char* omnibit_data, size_t length) {
     if (length < 28) return false; 
     
     // 1. Verify Magic Bytes 'OMNI'
@@ -60,18 +61,6 @@ bool ESPOmniEngine::Load(const unsigned char* omnibit_data, size_t length) {
         
         fc_w_ = weights_ptr_ + offset; offset += toc[10];
         fc_b_ = weights_ptr_ + offset; offset += toc[11];
-    } else if (arch_flag_ == 3) {
-        // --- Dense ContinuousCfC Parsing ---
-        bb_w_ = weights_ptr_ + offset; offset += toc[0];
-        bb_b_ = weights_ptr_ + offset; offset += toc[1];
-        f_w_  = weights_ptr_ + offset; offset += toc[2];
-        f_b_  = weights_ptr_ + offset; offset += toc[3];
-        g_w_  = weights_ptr_ + offset; offset += toc[4];
-        g_b_  = weights_ptr_ + offset; offset += toc[5];
-        h_w_  = weights_ptr_ + offset; offset += toc[6];
-        h_b_  = weights_ptr_ + offset; offset += toc[7];
-        fc_w_ = weights_ptr_ + offset; offset += toc[8];
-        fc_b_ = weights_ptr_ + offset; offset += toc[9];
     } else {
         // --- Legacy Dense Parsing ---
         uint32_t proj_offset = (input_dim_ * d_model_) + d_model_;
@@ -109,7 +98,7 @@ bool ESPOmniEngine::Load(const unsigned char* omnibit_data, size_t length) {
 }
 
 // Dense MatMul (IRAM Cached)
-void IRAM_ATTR ESPOmniEngine::matmul(const float* __restrict W, const float* __restrict b, const float* __restrict x, float* __restrict out, int rows, int cols) {
+void IRAM_ATTR OmniEngineCFC::matmul(const float* __restrict W, const float* __restrict b, const float* __restrict x, float* __restrict out, int rows, int cols) {
     for (int i = 0; i < rows; ++i) {
         float sum = (b != nullptr) ? b[i] : 0.0f;
         const float* W_row = W + (i * cols);
@@ -123,7 +112,7 @@ void IRAM_ATTR ESPOmniEngine::matmul(const float* __restrict W, const float* __r
 
 // Sparse CSR MatMul O(N_nonzero) (IRAM Cached)
 // Extreme optimization: Skips all zero-weight synapses automatically!
-void IRAM_ATTR ESPOmniEngine::matmul_csr(const float* __restrict val, const uint32_t* __restrict col, const uint32_t* __restrict row_ptr, const float* __restrict b, const float* __restrict x, float* __restrict out, int rows) {
+void IRAM_ATTR OmniEngineCFC::matmul_csr(const float* __restrict val, const uint32_t* __restrict col, const uint32_t* __restrict row_ptr, const float* __restrict b, const float* __restrict x, float* __restrict out, int rows) {
     for (int i = 0; i < rows; ++i) {
         float sum = (b != nullptr) ? b[i] : 0.0f;
         uint32_t row_start = row_ptr[i];
@@ -138,9 +127,11 @@ void IRAM_ATTR ESPOmniEngine::matmul_csr(const float* __restrict val, const uint
 }
 
 // Core Step Function (IRAM Cached)
-void IRAM_ATTR ESPOmniEngine::Step(const float* sensors, float dt, float abs_time, float* out_action) {
+void IRAM_ATTR OmniEngineCFC::Step(const float* sensors, float dt, float abs_time, float* out_action) {
     if (!is_loaded) {
-        for (uint32_t i = 0; i < output_dim_; ++i) out_action[i] = 0.0f;
+        for (uint32_t i = 0; i < output_dim_; ++i) {
+            out_action[i] = 0.0f;
+        }
         return;
     }
     
@@ -150,13 +141,6 @@ void IRAM_ATTR ESPOmniEngine::Step(const float* sensors, float dt, float abs_tim
         
         // Final Output Generation using FC layer
         matmul(fc_w_, fc_b_, state_buffer_, out_action, output_dim_, d_model_);
-        return;
-    } else if (arch_flag_ == 3) {
-        // --- Dense ContinuousCfC Path ---
-        apply_dense_cfc(sensors, dt);
-        
-        matmul(fc_w_, fc_b_, state_buffer_, out_action, output_dim_, d_model_);
-        return;
     } else {
         // --- Legacy Dense Path ---
         std::memset(latents_, 0, d_model_ * sizeof(float));
@@ -167,41 +151,17 @@ void IRAM_ATTR ESPOmniEngine::Step(const float* sensors, float dt, float abs_tim
         for (uint32_t i = 0; i < output_dim_ && i < d_model_; ++i) {
             out_action[i] = state_buffer_[i];
         }
-        return;
     }
 }
 
-void IRAM_ATTR ESPOmniEngine::apply_dense_cfc(const float* sensors, float dt) {
-    // 1. Concatenate Sensors + Hidden State -> x_in (bus-width copy)
-    std::memcpy(x_in_, sensors, input_dim_ * sizeof(float));
-    std::memcpy(x_in_ + input_dim_, state_buffer_, d_model_ * sizeof(float));
-    
-    // 2. Dense Neural Inference (Backbone)
-    uint32_t in_size = input_dim_ + d_model_;
-    matmul(bb_w_, bb_b_, x_in_, b_state_, d_model_, in_size);
-    
-    // Clamp dt to ensure stable temporal dynamics
-    float ts = std::max(dt, 0.0f);
-    
-    // 3. Apply Continuous-Time ODE Gates Element-wise
-    for(uint32_t i = 0; i < d_model_; ++i) {
-        float bb = std::tanh(b_state_[i]);
-        
-        float f_val = bb * f_w_[i] + f_b_[i];
-        float g_val = bb * g_w_[i] + g_b_[i];
-        float h_val = bb * h_w_[i] + h_b_[i];
-        
-        float t_scaled = ts * std::abs(g_val);
-        float t_interp = sigmoid(t_scaled);
-        
-        state_buffer_[i] = h_val * (1.0f - t_interp) + t_interp * f_val;
+void IRAM_ATTR OmniEngineCFC::apply_sparse_cfc(const float* sensors, float dt) {
+    // 1. Concatenate Sensors + Hidden State -> x_in
+    for (uint32_t i = 0; i < input_dim_; ++i) {
+        x_in_[i] = sensors[i];
     }
-}
-
-void IRAM_ATTR ESPOmniEngine::apply_sparse_cfc(const float* sensors, float dt) {
-    // 1. Concatenate Sensors + Hidden State -> x_in (bus-width copy)
-    std::memcpy(x_in_, sensors, input_dim_ * sizeof(float));
-    std::memcpy(x_in_ + input_dim_, state_buffer_, d_model_ * sizeof(float));
+    for (uint32_t i = 0; i < d_model_; ++i) {
+        x_in_[input_dim_ + i] = state_buffer_[i];
+    }
     
     // 2. CSR Sparse Neural Inference O(N_nonzero)
     matmul_csr(bb_val_, bb_col_, bb_row_, bb_b_, x_in_, b_state_, d_model_);
@@ -224,13 +184,13 @@ void IRAM_ATTR ESPOmniEngine::apply_sparse_cfc(const float* sensors, float dt) {
     }
 }
 
-void IRAM_ATTR ESPOmniEngine::apply_input_projection(const float* sensors) {
+void IRAM_ATTR OmniEngineCFC::apply_input_projection(const float* sensors) {
     const float* w = weights_ptr_; 
     const float* b = w + (input_dim_ * d_model_);
     matmul(w, b, sensors, latents_, d_model_, input_dim_);
 }
 
-void IRAM_ATTR ESPOmniEngine::add_temporal_encoding(float abs_time) {
+void IRAM_ATTR OmniEngineCFC::add_temporal_encoding(float abs_time) {
     uint32_t proj_offset = (input_dim_ * d_model_) + d_model_;
     const float* inv_freq = weights_ptr_ + proj_offset;
     const float* amplitude = inv_freq + (d_model_ / 2);
@@ -243,7 +203,7 @@ void IRAM_ATTR ESPOmniEngine::add_temporal_encoding(float abs_time) {
     }
 }
 
-void IRAM_ATTR ESPOmniEngine::apply_bio_liquid_cell(float dt) {
+void IRAM_ATTR OmniEngineCFC::apply_bio_liquid_cell(float dt) {
     // Legacy Dense Math Logic
     for (uint32_t i = 0; i < input_dim_; ++i) x_in_[i] = latents_[i] * sensory_w_[i] + sensory_b_[i];
     for (uint32_t i = 0; i < d_model_; ++i) x_in_[input_dim_ + i] = state_buffer_[i];
@@ -256,17 +216,19 @@ void IRAM_ATTR ESPOmniEngine::apply_bio_liquid_cell(float dt) {
     matmul(time_w_, time_b_, x_in_, b_time_, half_units, in_size);
     for(uint32_t i=0; i < half_units; ++i) b_time_[i] = lecun_activation(b_time_[i]);
     
-    matmul(ff1_w_, ff1_b_, b_state_, ff1_, d_model_, backbone_units_);
-    matmul(ff2_w_, ff2_b_, b_state_, ff2_, d_model_, backbone_units_);
-    for(uint32_t i=0; i < d_model_; ++i) { ff1_[i] = std::tanh(ff1_[i]); ff2_[i] = std::tanh(ff2_[i]); }
+    float ff1[256], ff2[256];
+    matmul(ff1_w_, ff1_b_, b_state_, ff1, d_model_, backbone_units_);
+    matmul(ff2_w_, ff2_b_, b_state_, ff2, d_model_, backbone_units_);
+    for(uint32_t i=0; i < d_model_; ++i) { ff1[i] = std::tanh(ff1[i]); ff2[i] = std::tanh(ff2[i]); }
     
-    matmul(time_a_w_, time_a_b_, b_time_, time_a_out_, d_model_, half_units);
-    matmul(time_b_w_, time_b_b_, b_time_, time_b_out_, d_model_, half_units);
+    float time_a_out[256], time_b_out[256];
+    matmul(time_a_w_, time_a_b_, b_time_, time_a_out, d_model_, half_units);
+    matmul(time_b_w_, time_b_b_, b_time_, time_b_out, d_model_, half_units);
     
     float ts = std::max(dt, 0.0f);
     for (uint32_t i = 0; i < d_model_; ++i) {
         float t_scaled = ts * std::abs(time_scale_[i]);
-        float t_interp = sigmoid(time_a_out_[i] * t_scaled + time_b_out_[i]);
-        state_buffer_[i] = ff1_[i] * (1.0f - t_interp) + t_interp * ff2_[i];
+        float t_interp = sigmoid(time_a_out[i] * t_scaled + time_b_out[i]);
+        state_buffer_[i] = ff1[i] * (1.0f - t_interp) + t_interp * ff2[i];
     }
 }

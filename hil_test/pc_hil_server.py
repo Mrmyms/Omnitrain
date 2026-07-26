@@ -22,15 +22,50 @@ except ImportError:
     print("ERR: Could not import physics engine from paper_experiments")
     sys.exit(1)
 
-def run_hil_test(port, baudrate, num_samples, loss_prob):
+def run_hil_test(port, baudrate, num_samples, loss_prob, model_path=None):
     try:
         ser = serial.Serial(port, baudrate, timeout=2)
+        # ESP32 Native USB CDC requires DTR to be asserted to know a terminal is connected
         ser.dtr = True
         ser.rts = True
         print(f"Connected to ESP32-S3 on {port} at {baudrate} baud.")
     except Exception as e:
         print(f"Failed to connect to Serial port: {e}")
         return
+
+    # Wait for ESP32 to boot up
+    time.sleep(2.0)
+    
+    if model_path:
+        print(f"Loading dynamic model from {model_path}...")
+        try:
+            with open(model_path, "rb") as f:
+                payload = f.read()
+            size = len(payload)
+            
+            # Send LOAD command
+            ser.write(f"LOAD:{size}\n".encode('utf-8'))
+            
+            # Wait for ACK
+            ack = ser.readline().decode('utf-8').strip()
+            if ack == f"ACK_LOAD:{size}":
+                print(f"ESP32 acknowledged load command. Sending {size} bytes...")
+                ser.write(payload)
+                
+                # Wait for OK
+                status = ser.readline().decode('utf-8').strip()
+                if status == "LOAD_OK":
+                    print("Model loaded successfully onto ESP32.")
+                else:
+                    print(f"ERR: Failed to load model. ESP32 reported: {status}")
+                    return
+            else:
+                print(f"ERR: Unexpected ACK from ESP32: {ack}")
+                return
+                
+        except Exception as e:
+            print(f"ERR: Could not read or send model payload: {e}")
+            return
 
     # Wait for ESP32 to be READY (Disabled for native USB compatibility)
     # print("Waiting for ESP32 to initialize...")
@@ -55,6 +90,7 @@ def run_hil_test(port, baudrate, num_samples, loss_prob):
     
     ttf = 0
     start_time = time.time()
+    sim_time = 0.0
     force = 0.0
     
     for step in range(num_samples):
@@ -65,8 +101,8 @@ def run_hil_test(port, baudrate, num_samples, loss_prob):
             # Packet dropped: ESP32 maintains its internal state. We don't send anything.
             pass
         else:
-            # Send state to ESP32-S3
-            msg = f"{x:.5f},{x_dot:.5f},{theta:.5f},{theta_dot:.5f}\n"
+            # Send state to ESP32-S3, appending dt and sim_time
+            msg = f"{x:.5f},{x_dot:.5f},{theta:.5f},{theta_dot:.5f},{dt:.5f},{sim_time:.5f}\n"
             ser.write(msg.encode('utf-8'))
             
             # Wait for ESP32-S3 to compute force
@@ -100,6 +136,7 @@ def run_hil_test(port, baudrate, num_samples, loss_prob):
         theta = theta + dt * theta_dot
         theta_dot = theta_dot + dt * thetaacc
         
+        sim_time += dt
         state = np.array([x, x_dot, theta, theta_dot])
         ttf += 1
         
@@ -119,6 +156,7 @@ if __name__ == "__main__":
     parser.add_argument("--baud", type=int, default=115200, help="Baud rate")
     parser.add_argument("--samples", type=int, default=5000, help="Max steps to simulate")
     parser.add_argument("--loss", type=float, default=0.20, help="Simulated Packet Loss (0.0 to 1.0)")
+    parser.add_argument("--model", type=str, default=None, help="Path to .omnibit file to load dynamically")
     args = parser.parse_args()
     
-    run_hil_test(args.port, args.baud, args.samples, args.loss)
+    run_hil_test(args.port, args.baud, args.samples, args.loss, args.model)

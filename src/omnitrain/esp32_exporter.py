@@ -1,9 +1,10 @@
 import struct
+import numpy as np
 import torch
 import torch.nn as nn
 from pathlib import Path
 import yaml
-from typing import Dict
+from typing import Dict, Optional
 
 class ESP32Exporter:
     """
@@ -173,6 +174,27 @@ class ESP32Exporter:
             if hasattr(model, 'fc'):
                 push_tensor('fc_w', model.fc.weight)
                 push_tensor('fc_b', model.fc.bias)
+        elif type(model).__name__ == 'SparseCfCMixed':
+            # ── Mixed-Precision Export (V5) ──
+            # This path uses the new export_mixed method instead of the
+            # standard float32 pipeline. We return early.
+            return self.export_mixed(model, input_dim, d_model, output_dim,
+                                     backbone_units, heads, config_path, filename)
+        elif type(model).__name__ == 'DiscreteRNN':
+            if isinstance(model.rnn, nn.LSTM):
+                arch_flag = 5
+                push_tensor('lstm_w_ih', model.rnn.weight_ih_l0)
+                push_tensor('lstm_w_hh', model.rnn.weight_hh_l0)
+                push_tensor('lstm_b_ih', model.rnn.bias_ih_l0)
+                push_tensor('lstm_b_hh', model.rnn.bias_hh_l0)
+            elif isinstance(model.rnn, nn.GRU):
+                arch_flag = 1
+                push_tensor('gru_w_ih', model.rnn.weight_ih_l0)
+                push_tensor('gru_w_hh', model.rnn.weight_hh_l0)
+                push_tensor('gru_b_ih', model.rnn.bias_ih_l0)
+                push_tensor('gru_b_hh', model.rnn.bias_hh_l0)
+            push_tensor('fc_w', model.fc.weight)
+            push_tensor('fc_b', model.fc.bias)
 
         # 4. Heads
         if heads:
@@ -241,6 +263,195 @@ class ESP32Exporter:
             self._export_hw_config(config_path, self.output_dir / "esp32_hw_config.h")
 
         return out_path
+
+    # ═══════════════════════════════════════════════════════════════════
+    #  Mixed-Precision Export (OMNI V5)
+    # ═══════════════════════════════════════════════════════════════════
+
+    def export_mixed(self, model, input_dim, d_model, output_dim,
+                     backbone_units=128, heads=None, config_path=None,
+                     filename='model_mixed.omnibit'):
+        """
+        Export a SparseCfCMixed model with per-core precision packing.
+        
+        Binary layout (V5):
+          [0:5]   Magic: OMNI\x05
+          [5]     ArchFlag: 6 (SparseCfCMixed)
+          [6:8]   Precision map: [sensory, inter, command, timegate] (4 nibbles in 2 bytes)
+          [8:32]  Dimensions header (6 × uint32)
+          [32:N]  TOC: per-tensor (size_bytes: uint32, dtype_flag: uint8, scale: float32 = 9 bytes each)
+          [N:]    Packed weight data
+        """
+        from .sparse_cfc_mixed import QuantGenotype, PRECISION_LEVELS, compute_scale
+        
+        out_path = self.output_dir / filename
+        g = model.genotype
+        magic_v5 = b'OMNI\x05'
+        arch_flag = 6  # SparseCfCMixed
+        
+        # Encode precision map: 4 genes packed into 2 bytes (one nibble each)
+        prec_byte0 = (g.sensory & 0x0F) | ((g.inter & 0x0F) << 4)
+        prec_byte1 = (g.command & 0x0F) | ((g.timegate & 0x0F) << 4)
+        
+        # Registry: list of (name, packed_bytes, dtype_flag, scale, n_params)
+        # dtype_flag: 0=int4, 1=int8, 2=fp16, 3=fp32
+        packed_registry = []
+        
+        def pack_tensor(name, tensor, precision):
+            """Pack a tensor at the specified precision and register it."""
+            t = tensor.detach().cpu()
+            n_params = t.numel()
+            flat = t.numpy().flatten()
+            cfg = PRECISION_LEVELS[precision]
+            
+            if precision == 0:  # INT4 — nibble packing
+                scale = compute_scale(t, 0)
+                quantized = np.clip(np.round(flat / scale), -8, 7).astype(np.int8)
+                # Pack two int4 values per byte
+                n_bytes = (n_params + 1) // 2
+                packed = bytearray(n_bytes)
+                for i in range(0, n_params, 2):
+                    lo = int(quantized[i]) & 0x0F
+                    hi = (int(quantized[i+1]) & 0x0F) << 4 if i+1 < n_params else 0
+                    packed[i // 2] = lo | hi
+                packed_registry.append((name, bytes(packed), 0, scale, n_params))
+                
+            elif precision == 1:  # INT8
+                scale = compute_scale(t, 1)
+                quantized = np.clip(np.round(flat / scale), -127, 127).astype(np.int8)
+                packed = struct.pack(f'{n_params}b', *quantized.tolist())
+                packed_registry.append((name, packed, 1, scale, n_params))
+                
+            elif precision == 2:  # FP16
+                half_vals = flat.astype(np.float16)
+                packed = half_vals.tobytes()
+                packed_registry.append((name, packed, 2, 1.0, n_params))
+                
+            else:  # FP32
+                packed = struct.pack(f'<{n_params}f', *flat.tolist())
+                packed_registry.append((name, packed, 3, 1.0, n_params))
+        
+        def pack_csr_mixed(name, weight_tensor, mask_tensor, precision):
+            """Pack CSR sparse backbone at specified precision."""
+            w = (weight_tensor * mask_tensor).detach().cpu().numpy()
+            m = mask_tensor.detach().cpu().numpy()
+            values = []
+            col_indices = []
+            row_ptrs = [0]
+            
+            for row in range(w.shape[0]):
+                for col in range(w.shape[1]):
+                    if m[row, col] > 0.5:
+                        values.append(float(w[row, col]))
+                        col_indices.append(col)
+                row_ptrs.append(len(values))
+            
+            # Values get quantized at their precision
+            val_tensor = torch.tensor(values, dtype=torch.float32)
+            pack_tensor(f'{name}_val', val_tensor, precision)
+            
+            # Indices are always uint32 (structural, not arithmetic)
+            col_packed = struct.pack(f'<{len(col_indices)}I', *col_indices)
+            packed_registry.append((f'{name}_col', col_packed, 3, 1.0, len(col_indices)))
+            row_packed = struct.pack(f'<{len(row_ptrs)}I', *row_ptrs)
+            packed_registry.append((f'{name}_row', row_packed, 3, 1.0, len(row_ptrs)))
+        
+        print(f"[ESP32Exporter] Mixed-Precision Export (V5): {g}")
+        
+        # ── Pack all parameter groups at their core's precision ──
+        
+        # Sensory backbone (columns 0:input_dim) — split from full backbone
+        bb_full = (model.backbone_weight * model.mask).detach().cpu()
+        bb_sensory = bb_full[:, :input_dim]
+        bb_recurrent = bb_full[:, input_dim:]
+        
+        # Pack sensory partition
+        pack_tensor('cfc_bb_sensory', bb_sensory, g.sensory)
+        # Pack recurrent partition at inter precision
+        pack_tensor('cfc_bb_recurrent', bb_recurrent, g.inter)
+        # Backbone bias at inter precision
+        pack_tensor('cfc_bb_b', model.backbone_bias, g.inter)
+        
+        # Timegate (ODE solver — critical precision)
+        pack_tensor('cfc_f_w', model.f_weight, g.timegate)
+        pack_tensor('cfc_f_b', model.f_bias, g.timegate)
+        
+        # Inter-neuron state (memory)
+        pack_tensor('cfc_g_w', model.g_weight, g.inter)
+        pack_tensor('cfc_g_b', model.g_bias, g.inter)
+        pack_tensor('cfc_h_w', model.h_weight, g.inter)
+        pack_tensor('cfc_h_b', model.h_bias, g.inter)
+        
+        # Command output
+        pack_tensor('fc_w', model.fc.weight, g.command)
+        pack_tensor('fc_b', model.fc.bias, g.command)
+        
+        # ── Write binary ──
+        num_tensors = len(packed_registry)
+        total_data_bytes = sum(len(data) for _, data, _, _, _ in packed_registry)
+        
+        with open(out_path, 'wb') as f:
+            # Header: magic(5) + arch(1) + prec_map(2) = 8 bytes
+            f.write(magic_v5 + struct.pack('<B', arch_flag))
+            f.write(struct.pack('BB', prec_byte0, prec_byte1))
+            
+            # Dimensions: 6 × uint32 = 24 bytes
+            f.write(struct.pack('<IIIIII', input_dim, d_model, output_dim,
+                                backbone_units, total_data_bytes, num_tensors))
+            
+            # TOC: per tensor → (data_size: uint32, dtype_flag: uint8, scale: float32) = 9 bytes each
+            for name, data, dtype_flag, scale, n_params in packed_registry:
+                f.write(struct.pack('<IBf', len(data), dtype_flag, scale))
+            
+            # Weight data
+            for name, data, dtype_flag, scale, n_params in packed_registry:
+                f.write(data)
+        
+        size_kb = out_path.stat().st_size / 1024.0
+        total_params = sum(n for _, _, _, _, n in packed_registry)
+        print(f"[ESP32Exporter] Successfully exported V5 mixed-precision to {out_path}")
+        print(f"[ESP32Exporter] Flash footprint: {size_kb:.2f} KB ({total_params} params, {num_tensors} tensors)")
+        
+        # Precision breakdown
+        for name, data, dtype_flag, scale, n_params in packed_registry:
+            dtype_name = ['INT4', 'INT8', 'FP16', 'FP32'][dtype_flag]
+            print(f"  {name:25s} → {dtype_name:5s} | {len(data):6d} bytes | {n_params} params | scale={scale:.6f}")
+        
+        # Auto-generate C-Header
+        c_header_path = out_path.with_suffix('.h')
+        with open(out_path, 'rb') as f:
+            binary_data = f.read()
+        
+        with open(c_header_path, 'w') as f:
+            array_name = filename.replace('.', '_').replace('-', '_')
+            f.write(f"// Auto-generated by Omnitrain ESP32Exporter (V5 Mixed-Precision)\n")
+            f.write(f"// Precision: sensory={PRECISION_LEVELS[g.sensory]['name']}, "
+                    f"inter={PRECISION_LEVELS[g.inter]['name']}, "
+                    f"command={PRECISION_LEVELS[g.command]['name']}, "
+                    f"timegate={PRECISION_LEVELS[g.timegate]['name']}\n")
+            f.write(f"// Flash footprint: {size_kb:.2f} KB\n")
+            f.write(f"#ifndef {array_name.upper()}_H\n")
+            f.write(f"#define {array_name.upper()}_H\n\n")
+            f.write(f"#include <stddef.h>\n\n")
+            f.write(f"const unsigned char {array_name}[] = {{\n    ")
+            
+            hex_data = [f"0x{b:02x}" for b in binary_data]
+            for i in range(0, len(hex_data), 12):
+                f.write(", ".join(hex_data[i:i+12]))
+                if i + 12 < len(hex_data):
+                    f.write(",\n    ")
+            
+            f.write(f"\n}};\n")
+            f.write(f"const size_t {array_name}_len = {len(binary_data)};\n\n")
+            f.write(f"#endif // {array_name.upper()}_H\n")
+        
+        print(f"[ESP32Exporter] Auto-generated C-Header: {c_header_path}")
+        
+        if config_path:
+            self._export_hw_config(config_path, self.output_dir / 'esp32_hw_config.h')
+        
+        return out_path
+
     def _export_hw_config(self, yaml_path, out_header):
         yaml_file = Path(yaml_path)
         if not yaml_file.exists():

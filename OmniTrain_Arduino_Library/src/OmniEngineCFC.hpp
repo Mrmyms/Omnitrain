@@ -1,5 +1,5 @@
-#ifndef ESP_OMNI_ENGINE_HPP
-#define ESP_OMNI_ENGINE_HPP
+#ifndef OMNI_ENGINE_CFC_HPP
+#define OMNI_ENGINE_CFC_HPP
 
 #include <cstdint>
 #include <cmath>
@@ -17,9 +17,9 @@
 #define ALIGN16 __attribute__((aligned(16)))
 #endif
 
-class ESPOmniEngine {
+class OmniEngineCFC {
 public:
-    ESPOmniEngine() : is_loaded(false), weights_ptr_(nullptr), arch_flag_(0) {}
+    OmniEngineCFC() : is_loaded(false), weights_ptr_(nullptr), arch_flag_(0) {}
 
     // Loads the weights mapped in Flash memory without copying them to SRAM (Zero-Copy)
     // Returns true if the load was successful.
@@ -51,10 +51,6 @@ private:
     ALIGN16 float b_state_[256];
     ALIGN16 float b_time_[256];
     ALIGN16 float x_in_[256 + 256]; // input_dim + d_model
-    ALIGN16 float ff1_[256];
-    ALIGN16 float ff2_[256];
-    ALIGN16 float time_a_out_[256];
-    ALIGN16 float time_b_out_[256];
     
     // Pointers to Flash (DROM)
     const float* weights_ptr_;
@@ -76,9 +72,6 @@ private:
     const float* time_b_b_;
     const float* time_scale_;
 
-    // Dense ContinuousCfC Pointers
-    const float* bb_w_;
-
     // Sparse CSR Pointers (For Arch Flag 4)
     const float* bb_val_;
     const uint32_t* bb_col_;
@@ -98,22 +91,14 @@ private:
     void add_temporal_encoding(float abs_time);
     void apply_bio_liquid_cell(float dt);
     void apply_sparse_cfc(const float* sensors, float dt); // New path for SparseCfC
-    void apply_dense_cfc(const float* sensors, float dt);  // Dense ContinuousCfC
     
     // Math Utilities
     float lecun_activation(float x) const { return 1.7159f * std::tanh(0.666f * x); }
-    
-    // Fast sigmoid: polynomial approximation (~3 cycles vs ~200 for std::exp)
-    // Accuracy: ±0.02 — more than sufficient for motor control signals
-    float sigmoid(float x) const {
-        if (x > 6.0f) return 1.0f;
-        if (x < -6.0f) return 0.0f;
-        return 0.5f + x * (0.25f - 0.025f * std::fabs(x));
-    }
+    float sigmoid(float x) const { return 1.0f / (1.0f + std::exp(-x)); }
     
     // Highly Optimized Math Kernels
     void matmul(const float* __restrict W, const float* __restrict b, const float* __restrict x, float* __restrict out, int rows, int cols);
     void matmul_csr(const float* __restrict val, const uint32_t* __restrict col, const uint32_t* __restrict row_ptr, const float* __restrict b, const float* __restrict x, float* __restrict out, int rows);
 };
 
-#endif // ESP_OMNI_ENGINE_HPP
+#endif // OMNI_ENGINE_CFC_HPP

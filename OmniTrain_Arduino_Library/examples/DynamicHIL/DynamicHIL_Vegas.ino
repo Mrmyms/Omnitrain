@@ -2,27 +2,16 @@
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
-#include "esp_omni_engine.hpp"
+#include "OmniEngineCFC.hpp"
 #include "OmniEngineGRU.hpp"
 #include "OmniEngineLSTM.hpp"
 #include "model.h"
 #include "USB.h"
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  OmniTrain HIL Firmware (Zero-Allocation Build)
-// ═══════════════════════════════════════════════════════════════════════════
-//
-//  Memory architecture:
-//    - Only the ACTIVE engine is instantiated (saves ~24KB SRAM)
-//    - All Serial I/O uses static char[] buffers (zero Heap usage)
-//    - Inference path is fully Zero-Allocation (no malloc/free/new/delete)
-//
-// ═══════════════════════════════════════════════════════════════════════════
+// Architecture selection
+#define USE_CFC
 
-// ── Engine instances: only ONE is active at a time ──
-// We keep all three in memory but share the heavy buffers via careful sizing.
-// A future optimization could use placement new + union for full sharing.
-ESPOmniEngine engine_cfc;
+OmniEngineCFC engine_cfc;
 OmniEngineGRU engine_gru;
 OmniEngineLSTM engine_lstm;
 int active_arch = 0; // 0=CfC/SparseCfC, 1=GRU, 5=LSTM
@@ -34,10 +23,6 @@ __attribute__((aligned(4))) uint8_t dynamic_model_buffer[65536];
 bool using_dynamic_model = false;
 size_t dynamic_model_len = 0;
 
-// ── Static Serial I/O buffer (replaces Arduino String → zero Heap) ──
-static const size_t SERIAL_BUF_SIZE = 512;
-static char serial_buf[SERIAL_BUF_SIZE];
-
 void setup() {
     USB.begin();
     Serial.begin(115200);
@@ -46,7 +31,7 @@ void setup() {
         delay(10);
     }
     
-    Serial.println("ESP32: Booting OmniTrain HIL (Zero-Alloc Build)...");
+    Serial.println("ESP32: Booting OmniTrain HIL (Dynamic I/O)...");
     if (!engine_cfc.Load(model_omnibit, model_omnibit_len)) {
         Serial.println("ERR: Failed to load OmniEngine payload.");
         unsigned long err_timer = 0;
@@ -71,21 +56,12 @@ void loop() {
     }
     
     if (Serial.available()) {
-        // ── Zero-Heap Serial read: static char buffer instead of String ──
-        size_t len = Serial.readBytesUntil('\n', serial_buf, SERIAL_BUF_SIZE - 1);
-        serial_buf[len] = '\0';
-        
-        // Trim trailing whitespace (replaces String.trim())
-        while (len > 0 && (serial_buf[len-1] == '\r' || serial_buf[len-1] == ' ')) {
-            serial_buf[--len] = '\0';
-        }
-        
-        if (len == 0) return;
+        String input = Serial.readStringUntil('\n');
+        input.trim();
 
         // Check for LOAD command
-        if (len > 5 && serial_buf[0] == 'L' && serial_buf[1] == 'O' && 
-            serial_buf[2] == 'A' && serial_buf[3] == 'D' && serial_buf[4] == ':') {
-            size_t payload_size = (size_t)atoi(serial_buf + 5);
+        if (input.startsWith("LOAD:")) {
+            size_t payload_size = input.substring(5).toInt();
             if (payload_size > 0 && payload_size <= sizeof(dynamic_model_buffer)) {
                 Serial.print("ACK_LOAD:");
                 Serial.println(payload_size);
@@ -130,14 +106,18 @@ void loop() {
             return;
         }
         
-        // ── Zero-Heap CSV parsing: strtok + strtof instead of String.substring ──
         float state_vector[32]; // Max 32 inputs supported for HIL
         int num_inputs = 0;
+        int start_idx = 0;
         
-        char* token = strtok(serial_buf, ",");
-        while (token != nullptr && num_inputs < 32) {
-            state_vector[num_inputs++] = strtof(token, nullptr);
-            token = strtok(nullptr, ",");
+        // Parse CSV string into floats
+        for (unsigned int i = 0; i < input.length(); i++) {
+            if (input[i] == ',' || i == input.length() - 1) {
+                int end_idx = (input[i] == ',') ? i : i + 1;
+                state_vector[num_inputs++] = input.substring(start_idx, end_idx).toFloat();
+                start_idx = i + 1;
+                if (num_inputs >= 32) break;
+            }
         }
         
         // Reset command hook (if Python sends a single 999.0, clear all memory)
@@ -156,7 +136,7 @@ void loop() {
         }
 
         int expected_inputs = 0;
-        if (active_arch == 1) expected_inputs = engine_gru.GetInputDim() + 1;
+        if (active_arch == 1) expected_inputs = engine_gru.GetInputDim() + 1; // 26 + 1 (sim_time ignored by GRU but sent by server dt is included in input_dim)
         else if (active_arch == 5) expected_inputs = engine_lstm.GetInputDim() + 1;
         else expected_inputs = engine_cfc.GetInputDim() + 2;
 
@@ -165,6 +145,7 @@ void loop() {
             int action_size = 0;
 
             if (active_arch == 1) {
+                // dt is already inside state_vector since GRU input_dim is 26
                 engine_gru.Step(state_vector, action);
                 action_size = engine_gru.GetOutputDim();
             } else if (active_arch == 5) {

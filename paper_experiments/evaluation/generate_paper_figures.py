@@ -102,12 +102,12 @@ def fig_ptq_collapse():
 # FIGURE 2: F1TENTH Fitness Bar Chart
 # =================================================================
 def fig_fitness_bar():
-    models = ['MLP\n(FP32)', 'Dense CfC\n(FP32)', 'Dense CfC\n(PTQ-INT8)', 'SparseCfC\n(QAT-INT8)']
-    fitness = [14200, 22500, 4100, 52312]
-    colors  = ['#b0b0b0', '#4393c3', '#d73027', '#1a9641']
+    models = ['LSTM\n(HIL)', 'GRU\n(HIL)', 'Dense CfC\n(PTQ-INT8)', 'SparseCfC\n(HIL-INT8)']
+    fitness = [884, 24902, 4100, 31090]
+    colors  = ['#b0b0b0', '#ff9999', '#d73027', '#1a9641']
     hatch   = ['', '', '///', '']
 
-    fig, ax = plt.subplots(figsize=(3.5, 2.8))
+    fig, ax = plt.subplots(figsize=(4.0, 2.8))
 
     bars = ax.bar(models, fitness, color=colors, edgecolor='black', linewidth=0.7, width=0.55)
     for bar, h in zip(bars, hatch):
@@ -118,11 +118,9 @@ def fig_fitness_bar():
         ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 350,
                 f'{val:,}', ha='center', va='bottom', fontsize=8.5, fontweight='bold')
 
-
-
-    ax.set_ylabel('Top Fitness Score', fontsize=8.5, labelpad=2)
-    ax.set_title('F1TENTH Evolutionary Training Results')
-    ax.set_ylim(0, 60000)
+    ax.set_ylabel('Mean Fitness (ESP32 HIL)', fontsize=8.5, labelpad=2)
+    ax.set_title('F1TENTH Hardware-in-the-Loop Performance')
+    ax.set_ylim(0, 35000)
     ax.yaxis.set_major_locator(MaxNLocator(5))
     
     # Fix overlapping labels

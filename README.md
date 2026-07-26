@@ -9,7 +9,13 @@
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)]()
 
 > [!IMPORTANT]
-> **Peer Review Reproducibility:** If you are reviewing the paper *"Efficient Closed-Form Continuous-Time Neural Networks on Commodity Microcontrollers"*, the exact code, datasets, and scripts to reproduce the experiments are located in the **[`paper_experiments/`](./paper_experiments/)** directory. We have carefully organized this folder into `training/`, `evaluation/`, and `hardware_in_the_loop/` scripts. A `Dockerfile` is also provided in the root directory to guarantee bit-exact reproducibility across host operating systems.
+> **Peer Review Reproducibility:** If you are reviewing the paper *"Zero-Copy Continuous-Time Neural Networks for Bare-Metal Autonomous Racing on Microcontrollers"*, the exact code, datasets, and scripts to reproduce the experiments are located in the **[`paper_experiments/`](./paper_experiments/)** directory. We have carefully organized this folder into `training/`, `evaluation/`, and `hardware_in_the_loop/` scripts. A `Dockerfile` is also provided in the root directory to guarantee bit-exact reproducibility across host operating systems.
+> 
+> To reproduce the Hardware-in-the-Loop (HIL) ablation test evaluated in Table IV, ensure your ESP32 is flashed with the OmniEngine firmware and run:
+> ```bash
+> cd hil_test
+> python run_f110_vegas_hil.py --model ../omnibit_models/f110_qat_champion_int8_fixed.omnibit
+> ```
 > All paper drafts, PDFs, and LaTeX sources have been consolidated in the **[`manuscript/`](./manuscript/)** directory.
 
 > [!NOTE]

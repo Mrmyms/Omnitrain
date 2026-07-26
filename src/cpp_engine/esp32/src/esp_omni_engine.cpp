@@ -8,10 +8,28 @@ bool ESPOmniEngine::Load(const unsigned char* omnibit_data, size_t length) {
         return false; 
     }
 
-    // 1. Verify Magic Bytes 'OMNI\x04' (V4)
+    // 1. Verify Magic Bytes
     if (omnibit_data[0] != 'O' || omnibit_data[1] != 'M' || 
-        omnibit_data[2] != 'N' || omnibit_data[3] != 'I' || 
-        omnibit_data[4] != 0x04) {
+        omnibit_data[2] != 'N' || omnibit_data[3] != 'I') {
+        return false;
+    }
+
+    uint8_t version = omnibit_data[4];
+
+    // ── V5: Mixed-Precision (OMNI\x05, arch_flag=6) ──
+    if (version == 0x05 && omnibit_data[5] == 6) {
+        is_loaded = mixed_engine_.Load(omnibit_data, length);
+        if (is_loaded) {
+            architecture_type_ = 6;  // SparseCfCMixed
+            input_dim_ = mixed_engine_.GetInputDim();
+            d_model_ = mixed_engine_.GetModelDim();
+            output_dim_ = mixed_engine_.GetOutputDim();
+        }
+        return is_loaded;
+    }
+
+    // ── V4: Standard format (OMNI\x04) ──
+    if (version != 0x04) {
         return false;
     }
 
@@ -140,6 +158,13 @@ std::vector<float> ESPOmniEngine::Step(const float* sensors, float dt, float abs
     
     if (architecture_type_ == 4) {
         return ncp_engine_.Step(sensors, dt, abs_time);
+    }
+    
+    if (architecture_type_ == 6) {
+        // V5 Mixed-Precision: zero-heap path via OmniEngineMixed
+        std::vector<float> output(output_dim_, 0.0f);
+        mixed_engine_.Step(sensors, dt, output.data());
+        return output;
     }
     
     std::memset(latents_, 0, d_model_ * sizeof(float));
