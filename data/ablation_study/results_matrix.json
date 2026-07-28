@@ -1,0 +1,38 @@
+{
+    "experiments": [
+        {
+            "arch_name": "Dense-CfC",
+            "parameters": 4000,
+            "sparsity": 0.0,
+            "precision": "FP32",
+            "fitness_mean": 22500,
+            "fitness_std": 1200,
+            "sram_kb": 16.5,
+            "flash_kb": 64.2,
+            "latency_ms": 8.12,
+            "hardware_platform": "ESP32-S3"
+        },
+        {
+            "arch_name": "NCP 20-10-20",
+            "parameters": 667,
+            "sparsity": 0.5,
+            "precision": "INT8",
+            "fitness_mean": 3176,
+            "fitness_std": 450,
+            "sram_kb": 6.1,
+            "flash_kb": 16.5,
+            "latency_ms": 6.15
+        },
+        {
+            "arch_name": "NCP 20-10-10",
+            "parameters": 270,
+            "sparsity": 0.75,
+            "precision": "INT8",
+            "fitness_mean": 21100,
+            "fitness_std": 890,
+            "sram_kb": 1.5,
+            "flash_kb": 13.8,
+            "latency_ms": 1.22
+        }
+    ]
+}

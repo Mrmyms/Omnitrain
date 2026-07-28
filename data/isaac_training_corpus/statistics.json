@@ -1,0 +1,27 @@
+{
+    "train_samples": 10000000,
+    "val_samples": 2000000,
+    "lidar_mean": [
+        2.34,
+        2.41,
+        2.5,
+        2.41,
+        2.34
+    ],
+    "lidar_std": [
+        0.67,
+        0.71,
+        0.75,
+        0.71,
+        0.67
+    ],
+    "steering_range": [
+        -1.0,
+        1.0
+    ],
+    "velocity_range": [
+        0.0,
+        2.5
+    ],
+    "collision_rate_raw": 0.032
+}

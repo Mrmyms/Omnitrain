@@ -1,0 +1,10 @@
+{
+    "max_absolute_deviation_hidden_state": 0.00012,
+    "max_absolute_deviation_output": 8.7e-05,
+    "pytorch_latency_ms": 1.19,
+    "esp32_latency_ms": 1.22,
+    "latency_overhead_percent": 2.5,
+    "bit_exact_match": false,
+    "numerical_stability_pass": true,
+    "validation_seeds": 10
+}

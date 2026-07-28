@@ -1,0 +1,8 @@
+{
+    "ptq_collapse_step": 47,
+    "gate_variance_fp32": 0.0187,
+    "gate_variance_int8_ptq": 1.2e-06,
+    "gate_variance_int8_qat": 0.0156,
+    "theoretical_dead_zone_width": 0.016,
+    "empirical_dead_zone_hits": 0.823
+}

@@ -1,0 +1,23 @@
+{
+    "baseline": {
+        "packet_loss_rate": 0.0,
+        "temporal_jitter_std_ms": 0.0,
+        "total_episodes": 30,
+        "mean_steps_to_failure": null
+    },
+    "packet_loss_20pct": {
+        "packet_loss_rate": 0.2,
+        "zoh_strategy": "extrapolate_last_valid",
+        "total_episodes": 30,
+        "mean_steps_to_failure_lstm": 500,
+        "mean_steps_to_failure_gru": 500,
+        "mean_steps_to_failure_cfc": 500
+    },
+    "packet_loss_60pct": {
+        "packet_loss_rate": 0.6,
+        "total_episodes": 30,
+        "mean_steps_to_failure_lstm": "50.0 \u00b1 22.6",
+        "mean_steps_to_failure_gru": "108.8 \u00b1 136.3",
+        "mean_steps_to_failure_cfc": "257.3 \u00b1 202.7"
+    }
+}

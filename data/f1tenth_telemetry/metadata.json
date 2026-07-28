@@ -1,0 +1,10 @@
+{
+    "hardware": "ESP32-S3 @ 240 MHz",
+    "circuit_length_m": 28.0,
+    "sampling_frequency_hz": 20,
+    "total_sequences": 5,
+    "total_steps": 25000,
+    "lidar_ray_count": 25,
+    "range_min_m": 0.15,
+    "range_max_m": 5.0
+}
